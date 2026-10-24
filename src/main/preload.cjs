@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('replay', {
   openMeeting: date => ipcRenderer.invoke('meeting:open', date),
   dates: () => ipcRenderer.invoke('meeting:dates'),
   patchItem: (id, patch) => ipcRenderer.invoke('item:patch', id, patch),
+  removeItem: id => ipcRenderer.invoke('item:remove', id),
   reorder: ids => ipcRenderer.invoke('items:reorder', ids),
   patchSettings: patch => ipcRenderer.invoke('settings:patch', patch),
   chooseFolder: () => ipcRenderer.invoke('folder:choose'),

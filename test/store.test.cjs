@@ -61,3 +61,41 @@ test('corrupt manifests fail without being replaced and traversal is rejected', 
 test('Budapest meeting day changes at local midnight', () => {
   assert.equal(localDate(new Date('2026-10-24T22:30:00Z')), '2026-10-25');
 });
+
+test('removing videos and images persists per meeting and preserves archived and source files', async t => {
+  const { store, clip } = await fixture(t);
+  const date = '2026-10-24';
+  const video = await clip('race.mp4', 'race recording');
+  const image = await clip('sponsor.png', 'sponsor image');
+  const race = (await store.importFiles(date, [video])).results[0].item;
+  const banner = (await store.importFiles(date, [image], 'ad')).results[0].item;
+  await store.patchItem(date, banner.id, { enabled: false });
+  await store.importFiles('2026-10-25', [video]);
+  await store.removeItem(date, race.id);
+  await store.removeItem(date, banner.id);
+  const restarted = new MeetingStore(store.root);
+  assert.deepEqual((await restarted.load(date)).items.map(item => item.id), ['park', 'redmills', 'pedro']);
+  assert.equal((await restarted.load('2026-10-25')).items.filter(item => item.kind === 'race').length, 1);
+  for (const [source, item] of [[video, race], [image, banner]]) {
+    assert.deepEqual(await fs.readFile(source), await fs.readFile(path.join(store.folder(date), item.file)));
+  }
+  assert.equal((await store.importFiles(date, [video])).results[0].status, 'imported', 'Removed media can be added again');
+});
+
+test('removing built-in media can empty a meeting without restoring removed entries on restart', async t => {
+  const { store } = await fixture(t); const date = '2026-10-24';
+  for (const id of ['park', 'redmills', 'pedro']) await store.removeItem(date, id);
+  assert.deepEqual((await new MeetingStore(store.root).load(date)).items, []);
+  const manifest = path.join(store.folder(date), 'meeting.json'); const before = await fs.readFile(manifest, 'utf8');
+  await assert.rejects(store.removeItem(date, 'missing'), /no longer exists/);
+  assert.equal(await fs.readFile(manifest, 'utf8'), before);
+});
+
+test('removal serializes with imports without losing newly added items', async t => {
+  const { store, clip } = await fixture(t); const date = '2026-10-24';
+  const first = await clip('first.mp4', 'first'); const second = await clip('second.mp4', 'second');
+  const race = (await store.importFiles(date, [first])).results[0].item;
+  const [imported] = await Promise.all([store.importFiles(date, [second]), store.removeItem(date, race.id)]);
+  const races = (await store.load(date)).items.filter(item => item.kind === 'race');
+  assert.deepEqual(races.map(item => item.id), [imported.results[0].item.id]);
+});

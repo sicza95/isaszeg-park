@@ -84,6 +84,13 @@ class MeetingStore {
       if (Number.isFinite(patch.seconds)) item.seconds = Math.min(120, Math.max(3, patch.seconds));
     });
   }
+  removeItem(date, id) {
+    return this.update(date, data => {
+      const index = data.items.findIndex(item => item.id === id);
+      if (index < 0) throw new Error('This item no longer exists.');
+      data.items.splice(index, 1);
+    });
+  }
   patchSettings(date, patch) {
     return this.update(date, data => {
       for (const key of ['sponsorRail', 'muted', 'autoBrowse']) if (typeof patch[key] === 'boolean') data.settings[key] = patch[key];

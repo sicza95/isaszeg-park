@@ -10,6 +10,7 @@ async function run() {
   await fs.writeFile(path.join(card, 'camera-001.mp4'), fixture);
   await fs.writeFile(path.join(card, 'camera-002.mp4'), Buffer.concat([fixture, Buffer.from([1])]));
   await fs.writeFile(path.join(card, 'renamed-duplicate.mp4'), fixture);
+  await fs.copyFile(path.join(__dirname, '../assets/park.jpg'), path.join(card, 'sponsor.jpg'));
   const errors = [];
   const app = await electron.launch({ args: [path.join(__dirname, 'smoke-entry.cjs'), '--no-sandbox'], env: { ...process.env, ISASZEG_SMOKE_HOME: root } });
   try {
@@ -20,8 +21,9 @@ async function run() {
     await expect(desk.locator('#now-title')).toHaveText('Welcome to Isaszeg Park');
     // Native folder selection is the only stub; all listing / imports use real IPC and files.
     await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, card);
-    const importClip = async name => {
+    const importClip = async (name, kind = 'race') => {
       await desk.locator('#import-button').click();
+      await desk.locator('#import-kind').selectOption(kind);
       await desk.locator('#choose-folder').click();
       await desk.locator('.file-row').filter({ hasText: name }).locator('input').check();
       await desk.locator('#confirm-import').click();
@@ -73,8 +75,53 @@ async function run() {
     const races = data.meeting.items.filter(x => x.kind === 'race');
     assert.deepEqual(races.map(x => x.raceNumber), [1, 2]);
     assert.deepEqual(await fs.readFile(path.join(card, 'camera-001.mp4')), fixture);
+    // Removal uses the same real renderer, preload and persisted store as imports.
+    await desk.locator(`#playlist [data-play="${races[0].id}"]`).first().click();
+    await expect.poll(() => audience.locator('video').evaluate(video => video.paused)).toBe(false);
+    await desk.locator('#play-pause').click();
+    await expect.poll(() => audience.locator('video').evaluate(video => video.paused)).toBe(true);
+    const retained = await audience.locator('video').evaluate(video => ({ src: video.src, time: video.currentTime }));
+    await desk.locator(`#playlist [data-remove="${races[1].id}"]`).click();
+    await expect(desk.locator('#remove-title')).toHaveText('Race 02');
+    await desk.locator('#remove-dialog .close-dialog').last().click();
+    await expect(desk.locator(`#playlist [data-item="${races[1].id}"]`)).toHaveCount(1);
+    await desk.locator(`#playlist [data-remove="${races[1].id}"]`).click();
+    await desk.locator('#confirm-remove').click();
+    await expect(desk.locator(`#playlist [data-item="${races[1].id}"]`)).toHaveCount(0);
+    const uninterrupted = await audience.locator('video').evaluate(video => ({ src: video.src, time: video.currentTime }));
+    assert.deepEqual(uninterrupted, retained, 'Removing another clip retains paused playback');
+    await desk.locator(`#playlist [data-remove="${races[0].id}"]`).click();
+    await desk.locator('#confirm-remove').click();
+    await expect(desk.locator('#now-title')).toHaveText('Welcome to Isaszeg Park');
+    await expect(audience.locator('video')).toBeHidden();
+    for (const race of races) assert.deepEqual(await fs.readFile(path.join(data.root, data.meeting.date, race.file)), await fs.readFile(path.join(card, race.originalName)));
+    await importClip('sponsor.jpg', 'ad');
+    await desk.locator('#import-dialog .close-dialog').first().click();
+    const creative = (await desk.evaluate(() => window.replay.init())).meeting.items.find(item => item.originalName === 'sponsor.jpg');
+    await desk.locator('[data-page="creative"]').click();
+    await desk.locator(`#creative-grid [data-enable="${creative.id}"]`).uncheck();
+    await desk.locator(`#creative-grid [data-remove="${creative.id}"]`).click();
+    await desk.screenshot({ path: path.join(__dirname, '../test-results/removal-confirmation.png'), fullPage: true });
+    await desk.locator('#confirm-remove').click();
+    await expect(desk.locator(`#creative-grid [data-remove="${creative.id}"]`)).toHaveCount(0);
+    assert.deepEqual(await fs.readFile(path.join(data.root, data.meeting.date, creative.file)), await fs.readFile(path.join(card, 'sponsor.jpg')));
+    await desk.reload();
+    await expect(desk.locator('.queue-item')).toHaveCount(2); // Welcome plus the enabled mock ad.
+    const saved = (await desk.evaluate(() => window.replay.init())).meeting;
+    assert.deepEqual(saved.items.map(item => item.id), ['park', 'redmills', 'pedro']);
+    await desk.locator('[data-page="creative"]').click();
+    for (const id of ['park', 'redmills', 'pedro']) {
+      await desk.locator(`#creative-grid [data-remove="${id}"]`).click();
+      await desk.locator('#confirm-remove').click();
+      await expect(desk.locator('#remove-dialog')).not.toBeVisible();
+    }
+    await expect(desk.locator('#creative-grid')).toContainText('No banners or ads');
+    await desk.locator('[data-page="desk"]').click();
+    await expect(desk.locator('#now-title')).toHaveText('Isaszeg Park');
+    await expect(desk.locator('#preview > img')).toBeVisible();
+    await expect(audience.locator('img')).toBeVisible();
     assert.deepEqual(errors, []);
-    console.log('Desktop smoke passed: real IPC import, video decoding, uninterrupted append, duplicate skip, speed, pause, holding, blackout and sponsor footer.');
+    console.log('Desktop smoke passed: real IPC imports, playback controls, removal of videos and images, cancellation, uninterrupted playback, file preservation, persistence and empty-loop fallback.');
   } finally { await app.close(); await fs.rm(root, { recursive: true, force: true }); }
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

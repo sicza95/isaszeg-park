@@ -1,4 +1,7 @@
 export const RATES = [0.25, 0.5, 0.75, 1];
+export function holdingItem(meeting) {
+  return meeting.items.find(item => item.builtin === 'park') || { id: 'holding', title: 'Isaszeg Park', kind: 'banner', mediaType: 'image', url: '../../assets/park.jpg', seconds: 12 };
+}
 export function makePlaylist(meeting) {
   const items = meeting.items.filter(item => item.enabled);
   const ads = items.filter(item => item.kind === 'ad');

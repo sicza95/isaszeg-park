@@ -25,6 +25,14 @@ export function createDemoAPI() {
     openMeeting: async next => { if (!/^\d{4}-\d{2}-\d{2}$/.test(next)) throw new Error('Choose a valid date.'); date = next; if (!meetings.has(date)) meetings.set(date, fresh(date)); return refresh(); },
     dates: async () => [...meetings.keys()],
     patchItem: async (id, patch) => { Object.assign(meetings.get(date).items.find(x => x.id === id), patch); return refresh(); },
+    removeItem: async id => {
+      const meeting = meetings.get(date); const index = meeting.items.findIndex(item => item.id === id);
+      if (index < 0) throw new Error('This item no longer exists.');
+      const [item] = meeting.items.splice(index, 1);
+      const next = refresh();
+      if (item.url?.startsWith('blob:')) URL.revokeObjectURL(item.url);
+      return next;
+    },
     patchSettings: async patch => { Object.assign(meetings.get(date).settings, patch); return refresh(); },
     reorder: async ids => { const meeting = meetings.get(date); meeting.items = ids.map(id => meeting.items.find(x => x.id === id)); return refresh(); },
     chooseFiles: selectFiles, chooseFolder: async () => null, listFolder: async () => { throw new Error('Use Select files directly in the browser demo.'); },

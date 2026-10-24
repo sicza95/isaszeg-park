@@ -61,3 +61,37 @@ test('opening another meeting resets to its holding slide and configured default
   meeting.date = '2026-10-25'; meeting.items = meeting.items.slice(0, 1); meeting.settings.defaultRate = .75; player.setMeeting(meeting);
   assert.equal(player.status().id, 'park'); assert.equal(player.status().rate, .75);
 });
+
+test('removing another item keeps the active replay position, pause state and slow rate', t => {
+  const { player, video, meeting, race } = setup(t);
+  meeting.items.push(race(2)); player.setMeeting(structuredClone(meeting));
+  player.command({ type: 'play', id: 'race1' }); player.command({ type: 'rate', rate: .5 }); player.command({ type: 'toggle' });
+  video.currentTime = 8.5;
+  meeting.items = meeting.items.filter(item => item.id !== 'race2'); player.setMeeting(structuredClone(meeting));
+  assert.equal(player.status().id, 'race1'); assert.equal(video.src, '1.mp4');
+  assert.equal(video.currentTime, 8.5); assert.equal(video.playbackRate, .5); assert.equal(video.paused, true);
+});
+
+test('removing the playing video switches to remaining content', t => {
+  const { player, video, meeting } = setup(t); player.command({ type: 'latest' });
+  meeting.items = meeting.items.filter(item => item.id !== 'race1'); player.setMeeting(structuredClone(meeting));
+  assert.equal(player.status().id, 'park'); assert.equal(video.src, '');
+  assert.equal(player.available().some(item => item.id === 'race1'), false);
+});
+
+test('removing all media leaves a holding screen and Next safely stays there', t => {
+  const { player, video, meeting } = setup(t); player.command({ type: 'latest' });
+  meeting.items = []; player.setMeeting(structuredClone(meeting));
+  assert.equal(player.status().id, 'holding'); assert.equal(player.status().mode, 'holding'); assert.equal(video.src, '');
+  player.position = 1000; player.tick(); assert.equal(player.status().id, 'holding');
+  player.command({ type: 'next' }); assert.equal(player.status().id, 'holding');
+  meeting.date = '2026-10-25'; player.setMeeting(structuredClone(meeting));
+  assert.equal(player.status().id, 'holding'); assert.equal(player.status().mode, 'holding');
+});
+
+test('removing the manually held banner replaces it with the fallback', t => {
+  const { player, meeting } = setup(t); player.command({ type: 'holding' });
+  meeting.items = meeting.items.filter(item => item.id !== 'park'); player.setMeeting(structuredClone(meeting));
+  assert.equal(player.status().id, 'holding'); assert.equal(player.status().mode, 'holding');
+  player.command({ type: 'next' }); assert.equal(player.status().id, 'race1');
+});

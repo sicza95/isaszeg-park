@@ -1,4 +1,4 @@
-import { makePlaylist, nextItem, RATES } from '../shared/playlist.mjs';
+import { makePlaylist, nextItem, holdingItem, RATES } from '../shared/playlist.mjs';
 
 export class StageView {
   constructor(stage) { this.stage = stage; this.video = stage.querySelector('video'); this.image = stage.querySelector('img'); this.label = stage.querySelector('.stage-race-label'); this.rail = stage.querySelector('.stage-rail'); this.black = stage.querySelector('.stage-blackout'); this.signature = null; }
@@ -56,17 +56,22 @@ export class Player {
     if (changedDefault) this.rate = RATES.includes(meeting.settings.defaultRate) ? meeting.settings.defaultRate : 1;
     this.view.video.muted = meeting.settings.muted;
     this.view.video.playbackRate = this.rate;
-    if (changedDay) { this.failed.clear(); this.mode = 'loop'; this.paused = false; this.blackout = false; this.load(this.available()[0] || this.holding()); }
+    if (changedDay) { this.failed.clear(); const first = this.available()[0]; this.mode = first ? 'loop' : 'holding'; this.paused = false; this.blackout = false; this.load(first || this.holding()); }
     else {
       const current = meeting.items.find(x => x.id === this.item?.id);
       if (current && (current.enabled || this.mode === 'holding')) {
         if (current.url !== this.item.url) this.load(current); else this.item = current;
-      } else if (this.mode !== 'holding') this.load(this.available()[0] || this.holding());
+      } else if (this.mode === 'holding') this.load(this.holding());
+      else {
+        const next = this.available()[0];
+        if (!next) this.mode = 'holding';
+        this.load(next || this.holding());
+      }
       if (this.item) this.view.show(this.item, meeting, this.status());
     }
     this.emit();
   }
-  holding() { return this.meeting.items.find(x => x.builtin === 'park') || { id: 'holding', title: 'Isaszeg Park', kind: 'banner', mediaType: 'image', url: '../../assets/park.jpg', seconds: 12 }; }
+  holding() { return holdingItem(this.meeting); }
   available() { return this.queue.filter(x => !this.failed.has(`${x.id}:${x.url}`)); }
   load(item) {
     clearTimeout(this.pendingError); this.pendingError = null;

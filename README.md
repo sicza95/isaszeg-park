@@ -62,7 +62,7 @@ Shortcuts work while either app window has keyboard focus. They do not take over
 
 ## Banners and sponsor slots
 
-The welcome banner uses gentle motion. Add JPG / PNG / WebP stills or video creatives in **Banners & ads**. Set each image duration, edit titles, reorder the loop, and enable or disable items without deleting archived files. Playback uses `object-fit: contain`: the full recording remains visible. Enabling the optional sponsor footer reserves space below the video rather than covering the finish line.
+The welcome banner uses gentle motion. Add JPG / PNG / WebP stills or video creatives in **Banners & ads**. Set each image duration, edit titles, reorder the loop, and enable or disable items without deleting archived files. Use the trash button beside a playlist item or **Remove** in **Banners & ads**, then confirm **Remove from meeting**. Removal is saved for that meeting; archived media files and camera originals are kept. Removing the current item switches playback to available content, with the welcome banner as a fallback when the loop is empty. Playback uses `object-fit: contain`: the full recording remains visible. Enabling the optional sponsor footer reserves space below the video rather than covering the finish line.
 
 Two generated sponsor mockups are included: Connolly's RED MILLS and PEDRO, based on names visible in the supplied track photos. Both are labelled **MOCK AD · CONCEPT ONLY**, start disabled, and require appropriate sponsor review before real use. They contain no product or nutrition claims. Enable your own production ads through the same workflow. The scheduler inserts ads after the configured number of races and ensures each enabled creative receives a slot in every loop.
 

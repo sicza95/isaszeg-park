@@ -1,10 +1,10 @@
 import { icon, fillIcons, escapeHTML as e } from './icons.mjs';
-import { makePlaylist, commandForKey, formatTime } from '../shared/playlist.mjs';
+import { makePlaylist, commandForKey, formatTime, holdingItem } from '../shared/playlist.mjs';
 import { StageView, Player } from './player.mjs';
 import { createDemoAPI } from './demo-api.mjs';
 const $ = selector => document.querySelector(selector);
 const api = window.replay || createDemoAPI(); const desktop = Boolean(window.replay);
-let state, playback, activePage = 'desk', currentDirectory = null, parentDirectory = null, selection = new Map(), editingId, importing = false, lastError;
+let state, playback, activePage = 'desk', currentDirectory = null, parentDirectory = null, selection = new Map(), editingId, importing = false, removingId, removing = false, lastError;
 const view = desktop ? new StageView($('#preview')) : null;
 const player = desktop ? null : new Player($('#preview'), data => api.report(data));
 if (player) api.setTransport(command => player.command(command));
@@ -25,14 +25,14 @@ function renderPlaylist() {
   $('#queue-count').textContent = queue.length;
   $('#race-count').textContent = races.length ? `${races.length} race${races.length === 1 ? '' : 's'} saved for this meeting` : 'No races imported yet';
   const items = all.filter(x => x.kind !== 'ad' || x.enabled);
-  $('#playlist').innerHTML = items.map(item => `<div class="queue-item${!item.enabled ? ' disabled' : ''}" data-item="${e(item.id)}"><input type="checkbox" data-enable="${e(item.id)}" ${item.enabled ? 'checked' : ''} aria-label="Include ${e(item.title)} in loop"><button class="queue-thumb" data-play="${e(item.id)}" aria-label="Play ${e(item.title)}" ${!item.enabled ? 'disabled' : ''}>${thumb(item)}</button><div class="queue-title"><button data-play="${e(item.id)}" ${!item.enabled ? 'disabled' : ''}>${e(item.title)}</button><small>${item.kind === 'race' ? `REPLAY · ${bytes(item.bytes)}` : item.kind === 'ad' ? `SPONSOR${item.mock ? ' · MOCK AD' : ''}` : `BANNER · ${item.seconds || 12}s`}</small></div><div class="queue-actions"><button class="icon-button" data-move="${e(item.id)}" data-direction="-1" aria-label="Move ${e(item.title)} up">${icon('up')}</button><button class="icon-button" data-move="${e(item.id)}" data-direction="1" aria-label="Move ${e(item.title)} down">${icon('down')}</button></div><button class="icon-button" data-edit="${e(item.id)}" aria-label="Edit ${e(item.title)}">${icon('edit')}</button></div>`).join('') + (!races.length ? `<div class="queue-empty">Your race recordings will appear here.<br>Import the first clip to start the loop.</div>` : '');
+  $('#playlist').innerHTML = items.map(item => `<div class="queue-item${!item.enabled ? ' disabled' : ''}" data-item="${e(item.id)}"><input type="checkbox" data-enable="${e(item.id)}" ${item.enabled ? 'checked' : ''} aria-label="Include ${e(item.title)} in loop"><button class="queue-thumb" data-play="${e(item.id)}" aria-label="Play ${e(item.title)}" ${!item.enabled ? 'disabled' : ''}>${thumb(item)}</button><div class="queue-title"><button data-play="${e(item.id)}" ${!item.enabled ? 'disabled' : ''}>${e(item.title)}</button><small>${item.kind === 'race' ? `REPLAY · ${bytes(item.bytes)}` : item.kind === 'ad' ? `SPONSOR${item.mock ? ' · MOCK AD' : ''}` : `BANNER · ${item.seconds || 12}s`}</small></div><div class="queue-actions"><button class="icon-button" data-move="${e(item.id)}" data-direction="-1" aria-label="Move ${e(item.title)} up">${icon('up')}</button><button class="icon-button" data-move="${e(item.id)}" data-direction="1" aria-label="Move ${e(item.title)} down">${icon('down')}</button></div><button class="icon-button" data-edit="${e(item.id)}" aria-label="Edit ${e(item.title)}">${icon('edit')}</button><button class="icon-button danger" data-remove="${e(item.id)}" aria-label="Remove ${e(item.title)}" title="Remove ${e(item.title)}" ${state.busy ? 'disabled' : ''}>${icon('trash')}</button></div>`).join('') + (!races.length ? `<div class="queue-empty">Your race recordings will appear here.<br>Import the first clip to start the loop.</div>` : '');
   updateCurrentRow();
 }
 function updateCurrentRow() { document.querySelectorAll('.queue-item').forEach(row => row.classList.toggle('current', row.dataset.item === playback?.id)); }
 function renderCreative() {
   const items = state.meeting.items.filter(x => x.kind !== 'race');
   $('#creative-count').textContent = items.length;
-  $('#creative-grid').innerHTML = items.map(item => `<article class="panel creative-card">${item.mediaType === 'video' ? `<video src="${e(item.url)}" preload="metadata" muted></video>` : `<img src="${e(item.url)}" alt="${e(item.title)}">`}<div class="card-body"><h2>${e(item.title)}</h2><div class="concept-tag">${item.mock ? 'MOCK AD · CONCEPT ONLY' : item.kind === 'ad' ? 'SPONSOR CREATIVE' : 'TRACK BANNER'}</div><div class="creative-meta"><span>${item.mediaType === 'video' ? 'Video' : `${item.seconds || 12} seconds`}</span><button class="text-button" data-edit="${e(item.id)}">${icon('edit')}Edit</button><label><input class="switch" type="checkbox" data-enable="${e(item.id)}" ${item.enabled ? 'checked' : ''} aria-label="Include ${e(item.title)} in loop"></label></div><button class="text-button" data-play="${e(item.id)}" ${!item.enabled ? 'disabled' : ''}>${icon('play')}Play on display</button></div></article>`).join('');
+  $('#creative-grid').innerHTML = items.map(item => `<article class="panel creative-card">${item.mediaType === 'video' ? `<video src="${e(item.url)}" preload="metadata" muted></video>` : `<img src="${e(item.url)}" alt="${e(item.title)}">`}<div class="card-body"><h2>${e(item.title)}</h2><div class="concept-tag">${item.mock ? 'MOCK AD · CONCEPT ONLY' : item.kind === 'ad' ? 'SPONSOR CREATIVE' : 'TRACK BANNER'}</div><div class="creative-meta"><span>${item.mediaType === 'video' ? 'Video' : `${item.seconds || 12} seconds`}</span><button class="text-button" data-edit="${e(item.id)}">${icon('edit')}Edit</button><label><input class="switch" type="checkbox" data-enable="${e(item.id)}" ${item.enabled ? 'checked' : ''} aria-label="Include ${e(item.title)} in loop"></label></div><div class="creative-actions"><button class="text-button" data-play="${e(item.id)}" ${!item.enabled ? 'disabled' : ''}>${icon('play')}Play on display</button><button class="text-button danger" data-remove="${e(item.id)}" aria-label="Remove ${e(item.title)}" ${state.busy ? 'disabled' : ''}>${icon('trash')}Remove</button></div></div></article>`).join('') || '<p class="queue-empty">No banners or ads. Add an image or video to get started.</p>';
 }
 function renderDisplays() {
   const select = $('#display-select'); const current = Number(select.value);
@@ -46,6 +46,7 @@ function renderDisplays() {
 function setState(next) {
   state = next; $('#meeting-date').value = state.meeting.date; $('#meeting-date').disabled = state.busy;
   $('#import-button').disabled = state.busy; $('#change-root').disabled = state.busy;
+  $('#confirm-remove').disabled = state.busy || removing;
   $('#storage-root').value = state.root;
   $('#demo-notice').hidden = desktop;
   for (const [key, value] of Object.entries(state.meeting.settings)) { const input = $(`#setting-${key}`); if (input && document.activeElement !== input) { if (input.type === 'checkbox') input.checked = value; else input.value = value; } }
@@ -55,7 +56,7 @@ function setState(next) {
 }
 function updatePlayback(value) {
   if (!state) return; const changed = playback?.id !== value.id; playback = value;
-  const item = state.meeting.items.find(x => x.id === value.id);
+  const item = state.meeting.items.find(x => x.id === value.id) || (value.id === 'holding' ? holdingItem(state.meeting) : null);
   if (desktop && item) view.mirror(item, state.meeting, value);
   $('#now-title').textContent = value.title || 'Isaszeg Park';
   $('#playing-mode').textContent = value.blackout ? 'BLACKOUT · PLAYBACK PAUSED' : value.mode === 'holding' ? 'HOLDING · PRESS N TO RESUME THE LOOP' : value.paused ? 'PAUSED' : 'NOW PLAYING';
@@ -131,6 +132,26 @@ function openEdit(id) {
   const item = state.meeting.items.find(x => x.id === id); if (!item) return;
   editingId = id; $('#edit-title').value = item.title; $('#edit-duration').value = item.seconds || 12; $('#edit-duration-label').hidden = item.mediaType === 'video'; $('#edit-dialog').showModal();
 }
+function openRemove(id) {
+  if (state.busy || removing) return;
+  const item = state.meeting.items.find(x => x.id === id); if (!item) return;
+  removingId = id; $('#remove-title').textContent = item.title; $('#remove-dialog').showModal();
+}
+async function removeSelected() {
+  if (!removingId || state.busy || removing) return;
+  const item = state.meeting.items.find(x => x.id === removingId); if (!item) return;
+  removing = true;
+  $('#remove-dialog').querySelectorAll('button').forEach(button => { button.disabled = true; });
+  try {
+    setState(await api.removeItem(removingId));
+    $('#remove-dialog').close();
+    toast(`${item.title} removed from this meeting.`);
+  } finally {
+    removing = false;
+    $('#remove-dialog').querySelectorAll('button').forEach(button => { button.disabled = false; });
+    $('#confirm-remove').disabled = state.busy;
+  }
+}
 async function moveItem(id, direction) {
   const ids = state.meeting.items.map(x => x.id); const from = ids.indexOf(id); const to = from + direction;
   if (from < 0 || to < 0 || to >= ids.length) return;
@@ -147,6 +168,7 @@ document.addEventListener('click', event => {
     if (button.dataset.play) await api.command({ type: 'play', id: button.dataset.play });
     if (button.dataset.move) await moveItem(button.dataset.move, Number(button.dataset.direction));
     if (button.dataset.edit) openEdit(button.dataset.edit);
+    if (button.dataset.remove) openRemove(button.dataset.remove);
     if (button.dataset.drive) await browse(button.dataset.drive);
     if (button.dataset.directory) await browse(button.dataset.directory);
     if (button.classList.contains('close-dialog') && !importing) button.closest('dialog').close();
@@ -161,6 +183,9 @@ document.addEventListener('change', event => {
   });
 });
 $('#meeting-date').addEventListener('change', () => safely(async () => { const oldDate = state.meeting.date; try { setState(await api.openMeeting($('#meeting-date').value)); } catch (error) { $('#meeting-date').value = oldDate; throw error; } }));
+$('#confirm-remove').addEventListener('click', () => safely(removeSelected));
+$('#remove-dialog').addEventListener('cancel', event => { if (removing) event.preventDefault(); });
+$('#remove-dialog').addEventListener('close', () => { removingId = null; });
 $('#seek').addEventListener('input', () => safely(() => api.command({ type: 'scrub', fraction: Number($('#seek').value) / 1000 })));
 $('#import-button').addEventListener('click', () => safely(() => openImport()));
 $('#browse-card').addEventListener('click', () => safely(() => openImport('race', state.drives[0]?.path)));

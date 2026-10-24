@@ -18,6 +18,7 @@ function broadcast(channel, value) { send(control, channel, value); send(output,
 function displayInfo() { return screen.getAllDisplays().map((d, i) => ({ id: d.id, label: d.label || `Display ${i + 1}`, primary: d.id === screen.getPrimaryDisplay().id, width: d.size.width, height: d.size.height })); }
 async function snapshot() {
   const meeting = await store.load(date);
+  mediaFiles.clear();
   for (const item of meeting.items) {
     if (item.file) { const token = `${date}/${item.id}`; mediaFiles.set(token, path.join(store.folder(date), item.file)); item.url = `replay://media/${token}`; }
     else item.url = `replay://app/assets/${item.builtin}.jpg`;
@@ -125,6 +126,7 @@ async function boot() {
   handle('meeting:open', async nextDate => { if (busy) throw new Error('Wait for the import to finish.'); validDate(nextDate); await store.load(nextDate); date = nextDate; return refresh(); });
   handle('meeting:dates', async () => (await fs.readdir(store.root, { withFileTypes: true })).filter(x => x.isDirectory() && /^\d{4}-\d{2}-\d{2}$/.test(x.name)).map(x => x.name).sort().reverse());
   handle('item:patch', async (id, patch) => { await store.patchItem(date, id, patch || {}); return refresh(); });
+  handle('item:remove', async id => { if (busy) throw new Error('Wait for the import to finish.'); await store.removeItem(date, id); return refresh(); });
   handle('items:reorder', async ids => { await store.reorder(date, ids); return refresh(); });
   handle('settings:patch', async patch => { await store.patchSettings(date, patch || {}); return refresh(); });
   handle('folder:choose', async () => {

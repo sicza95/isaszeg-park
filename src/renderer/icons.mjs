@@ -19,6 +19,7 @@ const paths = {
   spark: '<path d="m12 2 3 7 7 3-7 3-3 7-3-7-7-3 7-3z"/>', close: '<path d="m6 6 12 12M6 18 18 6"/>',
   download: '<path d="M12 3v12m-5-5 5 5 5-5M4 15v5h16v-5"/>', replay: '<path d="M3 11a9 9 0 1 1 3 8M3 4v7h7"/>',
   moon: '<path d="M21 13A9 9 0 0 1 11 3a9 9 0 1 0 10 10z"/>', film: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 3v18M17 3v18M3 8h4m-4 8h4m10-8h4m-4 8h4"/>',
+  trash: '<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/>',
   edit: '<path d="m15 4 5 5M4 20l5-1L21 7a2 2 0 0 0-5-5L4 15z"/>'
 };
 export function icon(name) { return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || paths.play}</svg>`; }
