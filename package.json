@@ -1,0 +1,67 @@
+{
+  "name": "greyhound-replay",
+  "productName": "Isaszeg Replay",
+  "version": "0.1.0",
+  "description": "An offline race-day replay desk and audience display for Isaszeg Park.",
+  "main": "src/main/main.cjs",
+  "private": true,
+  "author": "Isaszeg Park",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "electron .",
+    "demo": "node scripts/demo-server.cjs",
+    "test": "node --test test/*.test.*",
+    "test:desktop": "node scripts/desktop-smoke.cjs",
+    "check": "node scripts/check.cjs",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --publish never",
+    "dist:win": "electron-builder --win --publish never",
+    "dist:mac": "electron-builder --mac --publish never",
+    "dist:linux": "electron-builder --linux --publish never"
+  },
+  "devDependencies": {
+    "electron": "45.0.0",
+    "electron-builder": "26.18.0",
+    "playwright": "1.62.1"
+  },
+  "build": {
+    "appId": "hu.isaszegpark.replay",
+    "productName": "Isaszeg Replay",
+    "artifactName": "Isaszeg-Replay-${version}-${os}-${arch}.${ext}",
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.video"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "AudioVideo"
+    }
+  }
+}
