@@ -80,6 +80,25 @@ async function run() {
     await expect(desk.locator('#preview .replay-details')).toBeVisible();
     await expect(audience.locator('.replay-details .broadcast-origin')).toHaveCount(0);
     await audience.screenshot({path:path.join(__dirname,'../test-results/race-replay-details.png')});
+    // Enabling the sponsor footer during a paused race must preserve the
+    // recording and keep both the video and runner overlays above the footer.
+    const pausedTime=await audience.locator('video').evaluate(v=>v.currentTime);
+    const sponsor=state.meeting.items.find(item=>item.kind==='ad');
+    await desk.evaluate(async id=>{await window.replay.patchItem(id,{enabled:true});await window.replay.patchSettings({sponsorRail:true});},sponsor.id);
+    await expect(audience.locator('.stage-rail')).toBeVisible();
+    await expect(desk.locator('#preview .stage-rail')).toBeVisible();
+    const footerLayout=await audience.locator('.stage').evaluate(stage=>{
+      const video=stage.querySelector('video').getBoundingClientRect(),rail=stage.querySelector('.stage-rail').getBoundingClientRect(),runners=stage.querySelector('.replay-details').getBoundingClientRect(),header=stage.querySelector('.replay-race-details').getBoundingClientRect();
+      return {videoAbove:video.bottom<=rail.top+1,runnersAbove:runners.bottom<=rail.top,headerAbove:header.bottom<=rail.top,paused:stage.querySelector('video').paused,time:stage.querySelector('video').currentTime};
+    });
+    assert.deepEqual(footerLayout,{videoAbove:true,runnersAbove:true,headerAbove:true,paused:true,time:pausedTime});
+    await audience.screenshot({path:path.join(__dirname,'../test-results/race-replay-sponsor-footer.png')});
+    await desk.evaluate(()=>window.replay.patchSettings({sponsorRail:false}));
+    await expect(audience.locator('.stage-rail')).toBeHidden();
+    assert.equal(await audience.locator('.stage').evaluate(stage=>stage.querySelector('video').getBoundingClientRect().height===stage.getBoundingClientRect().height),true);
+    await desk.evaluate(async id=>{await window.replay.patchItem(id,{enabled:false});await window.replay.patchSettings({sponsorRail:true});},sponsor.id);
+    await expect(audience.locator('.stage-rail')).toBeHidden();
+    await desk.evaluate(()=>window.replay.patchSettings({sponsorRail:false}));
     // The saved card shortcut selects the right editor, and edits refresh the
     // broadcast while retaining the current video time and pause state.
     const before=await audience.locator('video').evaluate(v=>v.currentTime);
@@ -121,6 +140,8 @@ async function run() {
       for(const rail of [false,true])for(const race of meeting.registration.races)for(const phase of ['racecard','media']){
         meeting.settings.sponsorRail=rail;
         view.show({...clip,raceId:race.id},meeting,{phase,position:0});
+        if(view.rail.hidden===rail)issues.push(`Race ${race.number} ${phase}: sponsor footer visibility does not match setting`);
+        if(rail&&view.racePanel.getBoundingClientRect().bottom>view.rail.getBoundingClientRect().top+1)issues.push(`Race ${race.number} ${phase}: graphics overlap sponsor footer`);
         for(const entry of stage.querySelectorAll('.broadcast-entry')){
           const parent=entry.getBoundingClientRect(),child=entry.querySelector('.broadcast-dog').getBoundingClientRect();
           if(child.bottom>parent.bottom+1||child.right>parent.right+1)issues.push(`Race ${race.number} ${phase} rail=${rail}: runner overflows ${Math.ceil(child.bottom-parent.bottom)}px (row ${Math.round(parent.height)}px, copy ${Math.round(child.height)}px)`);

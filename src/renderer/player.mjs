@@ -43,7 +43,7 @@ export class StageView {
     this.label.hidden = item.kind !== 'race' || Boolean(race);
     this.label.querySelector('strong').textContent = replayTitle(meeting,item);
     const ads = meeting.items.filter(x => x.kind === 'ad' && x.enabled);
-    const rail = meeting.settings.sponsorRail && ads.length > 0 && !(video && item.kind === 'race');
+    const rail = meeting.settings.sponsorRail && ads.length > 0;
     this.stage.classList.toggle('with-rail', Boolean(rail)); this.rail.hidden = !rail;
     if (rail) {
       const sponsor = ads[Math.floor(Date.now() / 12000) % ads.length];

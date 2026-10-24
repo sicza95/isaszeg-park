@@ -43,7 +43,9 @@
 .racecard-countdown strong{font-size:1.8cqw;letter-spacing:0;color:#e8d1b3;font-variant-numeric:tabular-nums}
 
 /* The same video fills the stage throughout the reverse prelude and replay. */
-.stage.linked-race>video,.stage.linked-race.with-rail>video{inset:0;width:100%;height:100%;object-fit:contain}
+.stage.linked-race>video{inset:0;width:100%;height:100%;object-fit:contain}
+.stage.linked-race.with-rail>video{height:91%}
+.stage.with-rail .race-broadcast{bottom:9%}
 .stage.racecard-mode>video{opacity:calc(.6 + .4 * var(--racecard-exit,0));filter:blur(calc(12px * (1 - var(--racecard-exit,0)))) brightness(calc(.5 + .5 * var(--racecard-exit,0)))}
 .stage.racecard-mode .race-broadcast::before{content:'';position:absolute;inset:0;background:linear-gradient(110deg,#25211edb,#28231d73);opacity:calc(1 - var(--racecard-exit,0))}
 .stage:not(.racecard-mode) .racecard-details{display:none}
