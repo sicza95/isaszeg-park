@@ -1,10 +1,12 @@
 import { icon, fillIcons, escapeHTML as e } from './icons.mjs';
 import { makePlaylist, commandForKey, formatTime, holdingItem } from '../shared/playlist.mjs';
 import { StageView, Player } from './player.mjs';
+import { createRegistrationView } from './registration.mjs';
 import { createDemoAPI } from './demo-api.mjs';
 const $ = selector => document.querySelector(selector);
 const api = window.replay || createDemoAPI(); const desktop = Boolean(window.replay);
 let state, playback, activePage = 'desk', currentDirectory = null, parentDirectory = null, selection = new Map(), editingId, importing = false, removingId, removing = false, lastError;
+const registration = createRegistrationView({ api, toast, setState, openImport });
 const view = desktop ? new StageView($('#preview')) : null;
 const player = desktop ? null : new Player($('#preview'), data => api.report(data));
 if (player) api.setTransport(command => player.command(command));
@@ -15,9 +17,11 @@ function bytes(size) { if (!size) return '—'; return size > 1024 ** 3 ? `${(si
 function thumb(item) { return item.mediaType === 'video' ? icon('film') : `<img src="${e(item.url)}" alt="">`; }
 function navigate(page) {
   activePage = page;
+  history.replaceState(null, '', `#${page}`);
   document.querySelectorAll('[data-page]').forEach(button => button.classList.toggle('active', button.dataset.page === page));
-  for (const name of ['desk', 'creative', 'settings']) $(`#${name}-page`).hidden = name !== page;
-  const labels = { desk: ['Race desk', 'Everything ready for the next replay.'], creative: ['Banners & ads', 'Give the moments between races their own spotlight.'], settings: ['Settings', 'Set up once. Keep race day simple.'] };
+  for (const name of ['desk', 'registration', 'creative', 'settings']) $(`#${name}-page`).hidden = name !== page;
+  const labels = { registration: ['Races & dogs', 'Build the race card. Get every dog ready for the start.'], desk: ['Race desk', 'Everything ready for the next replay.'], creative: ['Banners & ads', 'Give the moments between races their own spotlight.'], settings: ['Settings', 'Set up once. Keep race day simple.'] };
+  registration.setVisible(page === 'registration');
   $('#heading').innerHTML = `${labels[page][0]}<span class="accent">.</span>`; $('#page-label').textContent = labels[page][0]; $('#subheading').textContent = labels[page][1];
 }
 function renderPlaylist() {
@@ -50,6 +54,7 @@ function setState(next) {
   $('#storage-root').value = state.root;
   $('#demo-notice').hidden = desktop;
   for (const [key, value] of Object.entries(state.meeting.settings)) { const input = $(`#setting-${key}`); if (input && document.activeElement !== input) { if (input.type === 'checkbox') input.checked = value; else input.value = value; } }
+  registration.update(next);
   renderPlaylist(); renderCreative(); renderDisplays(); renderDrives();
   player?.setMeeting(state.meeting);
   if (desktop && playback) updatePlayback(playback);
@@ -87,11 +92,11 @@ async function browse(directory) {
   $('#browser-path').textContent = listing.directory; $('#parent-folder').disabled = !listing.parent;
   $('#file-list').innerHTML = listing.entries.map(item => item.directory ? `<button class="file-row folder" data-directory="${e(item.path)}">${icon('folder')}<span class="file-info"><strong>${e(item.name)}</strong><small>Open folder</small></span>${icon('arrow')}</button>` : fileRow(item)).join('') || '<div class="empty-browser">No supported media in this folder.<br>Try opening DCIM or another camera folder.</div>';
 }
-async function openImport(kind = 'race', directory) {
+async function openImport(kind = 'race', directory, numberOverride) {
   if (state.busy || importing) return;
   selection.clear(); currentDirectory = parentDirectory = null; directoryEntries = [];
   $('#import-kind').value = kind;
-  $('#race-number').value = Math.max(0, ...state.meeting.items.filter(x => x.kind === 'race').map(x => x.raceNumber || 0)) + 1;
+  $('#race-number').value = numberOverride || Math.max(0, ...state.meeting.items.filter(x => x.kind === 'race').map(x => x.raceNumber || 0)) + 1;
   $('#race-number-label').hidden = kind !== 'race';
   $('#import-results').textContent = ''; $('#import-progress').hidden = true;
   $('#browser-path').textContent = desktop ? 'Choose a card or folder to see its media files.' : 'Browser demo: use Select files directly. Files stay in this tab only.';
@@ -224,3 +229,5 @@ api.on('import-progress', value => {
 function clock() { $('#clock').textContent = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Budapest', hour: '2-digit', minute: '2-digit' }).format(new Date()); }
 clock(); setInterval(clock, 1000);
 try { setState(await api.init()); } catch (error) { toast(`Could not open race day: ${error.message}`, true); }
+
+if (['desk','registration','creative','settings'].includes(location.hash.slice(1))) navigate(location.hash.slice(1));

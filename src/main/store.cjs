@@ -75,6 +75,11 @@ class MeetingStore {
   }
   async save(data) { validateMeeting(data, data.date); await atomicJSON(path.join(this.folder(data.date), 'meeting.json'), data); return data; }
   update(date, change) { return this.exclusive(async () => { const data = await this.load(date); change(data); return this.save(data); }); }
+  async saveRegistration(date, input) {
+    const { validateRegistration } = await import('../shared/registration.mjs');
+    const registration = validateRegistration(input);
+    return this.update(date, data => { data.registration = registration; });
+  }
   patchItem(date, id, patch) {
     return this.update(date, data => {
       const item = data.items.find(x => x.id === id);

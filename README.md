@@ -44,6 +44,10 @@ The **Test and build desktop apps** GitHub Actions workflow creates Windows inst
 
 To package locally, run `npm run dist` on the target OS. Platform-specific commands are `npm run dist:win`, `npm run dist:mac` and `npm run dist:linux`. Prefer the build matrix for all three platforms; macOS signing requires macOS.
 
+## Races and dogs
+
+Use **Races & dogs** to register race cards and dogs, assign traps, record optional results, and match recordings by race number. **Open reference meeting** loads the scraped CGRC European Derby finals (4 October 2026: 14 races, 75 entries) without replacing existing registration. The first three races identify the supplied local video references. Desktop registration is saved with the meeting; browser registration persists on this device. See [registration workflow and source notes](docs/REGISTRATION.md).
+
 ## Controls
 
 | Action | Shortcut |

@@ -3,6 +3,7 @@ const allowedEvents = new Set(['state', 'command', 'playback', 'drives', 'drive-
 contextBridge.exposeInMainWorld('replay', {
   init: () => ipcRenderer.invoke('init'),
   openMeeting: date => ipcRenderer.invoke('meeting:open', date),
+  saveRegistration: data => ipcRenderer.invoke('registration:save', data),
   dates: () => ipcRenderer.invoke('meeting:dates'),
   patchItem: (id, patch) => ipcRenderer.invoke('item:patch', id, patch),
   removeItem: id => ipcRenderer.invoke('item:remove', id),

@@ -1,3 +1,4 @@
+import { validateRegistration } from '../shared/registration.mjs';
 const dateNow = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Budapest', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 function fresh(date) {
   return { version: 1, date, title: 'Race day', settings: { bannerSeconds: 12, adEvery: 2, sponsorRail: false, muted: true, defaultRate: 1, autoBrowse: true }, items: [
@@ -8,7 +9,9 @@ function fresh(date) {
 }
 export function createDemoAPI() {
   const meetings = new Map(); let date = dateNow(), output = null, transport;
-  meetings.set(date, fresh(date));
+  const savedRegistration = day => { try { const saved = JSON.parse(localStorage.getItem('isaszeg-registration-' + day) || 'null'); return saved ? validateRegistration(saved) : null; } catch { return null; } };
+  const makeMeeting = day => ({...fresh(day), registration: savedRegistration(day)});
+  meetings.set(date, makeMeeting(date));
   const events = new EventTarget(); const channel = new BroadcastChannel('isaszeg-replay-demo');
   const files = new Map(); let lastFrame;
   const emit = (name, data) => events.dispatchEvent(new CustomEvent(name, { detail: data }));
@@ -22,7 +25,8 @@ export function createDemoAPI() {
   channel.onmessage = ({ data }) => { if (data.type === 'command') transport?.(data.command); if (data.type === 'hello' && lastFrame) channel.postMessage(lastFrame); };
   return {
     init: async () => state(), on: (name, callback) => { const fn = e => callback(e.detail); events.addEventListener(name, fn); return () => events.removeEventListener(name, fn); },
-    openMeeting: async next => { if (!/^\d{4}-\d{2}-\d{2}$/.test(next)) throw new Error('Choose a valid date.'); date = next; if (!meetings.has(date)) meetings.set(date, fresh(date)); return refresh(); },
+    openMeeting: async next => { if (!/^\d{4}-\d{2}-\d{2}$/.test(next)) throw new Error('Choose a valid date.'); date = next; if (!meetings.has(date)) meetings.set(date, makeMeeting(date)); return refresh(); },
+    saveRegistration: async input => { const data = validateRegistration(input); localStorage.setItem('isaszeg-registration-' + date, JSON.stringify(data)); meetings.get(date).registration = structuredClone(data); return refresh(); },
     dates: async () => [...meetings.keys()],
     patchItem: async (id, patch) => { Object.assign(meetings.get(date).items.find(x => x.id === id), patch); return refresh(); },
     removeItem: async id => {

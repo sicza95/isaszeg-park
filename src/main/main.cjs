@@ -125,6 +125,7 @@ async function boot() {
   handle('init', async () => snapshot(), 'either');
   handle('meeting:open', async nextDate => { if (busy) throw new Error('Wait for the import to finish.'); validDate(nextDate); await store.load(nextDate); date = nextDate; return refresh(); });
   handle('meeting:dates', async () => (await fs.readdir(store.root, { withFileTypes: true })).filter(x => x.isDirectory() && /^\d{4}-\d{2}-\d{2}$/.test(x.name)).map(x => x.name).sort().reverse());
+  handle('registration:save', async data => { await store.saveRegistration(date, data); return refresh(); });
   handle('item:patch', async (id, patch) => { await store.patchItem(date, id, patch || {}); return refresh(); });
   handle('item:remove', async id => { if (busy) throw new Error('Wait for the import to finish.'); await store.removeItem(date, id); return refresh(); });
   handle('items:reorder', async ids => { await store.reorder(date, ids); return refresh(); });

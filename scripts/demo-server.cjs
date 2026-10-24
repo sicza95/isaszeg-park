@@ -5,9 +5,11 @@ const root = path.resolve(__dirname, '..');
 const types = { '.html': 'text/html', '.css': 'text/css', '.mjs': 'text/javascript', '.js': 'text/javascript', '.png': 'image/png', '.jpg': 'image/jpeg', '.mp4': 'video/mp4', '.webm': 'video/webm' };
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
-  const relative = url.pathname === '/' ? 'src/renderer/index.html' : decodeURIComponent(url.pathname.slice(1));
+  if (url.pathname === '/') { res.writeHead(302, { Location: '/src/renderer/index.html' }).end(); return; }
+  const relative = decodeURIComponent(url.pathname.slice(1));
   const file = path.resolve(root, relative);
-  if (!['src/renderer', 'src/shared', 'assets'].some(dir => file.startsWith(path.join(root, dir) + path.sep))) { res.writeHead(404).end(); return; }
+  const referenceVideo = path.dirname(file) === path.join(root, 'local-assets') && /^Race [123] CGRC Trophy - S[23] 275m - Greyhounds Isaszeg \((480|360)p\)\.mp4$/.test(path.basename(file));
+  if (!referenceVideo && !['src/renderer', 'src/shared', 'assets'].some(dir => file.startsWith(path.join(root, dir) + path.sep))) { res.writeHead(404).end(); return; }
   fs.stat(file, (error, stat) => {
     if (error || !stat.isFile()) { res.writeHead(404).end(); return; }
     const headers = { 'Content-Type': types[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store', 'Accept-Ranges': 'bytes' };
