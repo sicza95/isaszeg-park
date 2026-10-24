@@ -8,3 +8,7 @@ coverage/
 race-days/
 test-results/
 tmp/
+
+# Local reference media and other working assets
+/local-assets/*
+!/local-assets/.gitkeep
