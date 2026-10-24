@@ -112,6 +112,7 @@ async function importSelected() {
   const number = Number($('#race-number').value); const kind = $('#import-kind').value;
   if (kind === 'race' && (!Number.isInteger(number) || number < 1 || number > 9999)) { toast('Choose a race number between 1 and 9999.', true); return; }
   importing = true;
+  $('#import-dialog').close();
   $('#import-results').textContent = ''; $('#import-progress').hidden = false;
   document.querySelectorAll('#import-dialog button,#import-dialog input,#import-dialog select').forEach(input => { input.disabled = true; });
   try {

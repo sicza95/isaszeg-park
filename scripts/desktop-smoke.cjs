@@ -27,11 +27,11 @@ async function run() {
       await desk.locator('#choose-folder').click();
       await desk.locator('.file-row').filter({ hasText: name }).locator('input').check();
       await desk.locator('#confirm-import').click();
-      await expect(desk.locator('#import-progress')).toBeHidden({ timeout: 30000 });
+      await expect(desk.locator('#import-dialog')).toBeHidden();
+      await expect(desk.locator('#import-results')).not.toHaveText('', { timeout: 30000 });
     };
     await importClip('camera-001.mp4');
     await expect(desk.locator('#import-results')).toContainText('added to the loop');
-    await desk.locator('#import-dialog .close-dialog').first().click();
     await desk.locator('[data-command="latest"]').click();
     const audience = app.windows().find(window => window.url().endsWith('display.html'));
     assert.ok(audience, 'Audience window exists');
@@ -43,7 +43,6 @@ async function run() {
     const after = await audience.locator('video').evaluate(video => ({ src: video.src, time: video.currentTime }));
     assert.equal(after.src, before.src, 'Import retains active media URL');
     assert.ok(after.time >= before.time, 'Import does not rewind playback');
-    await desk.locator('#import-dialog .close-dialog').first().click();
     await desk.locator('[data-rate="0.5"]').click();
     await expect.poll(() => audience.locator('video').evaluate(video => video.playbackRate)).toBe(.5);
     await desk.locator('#play-pause').click();
@@ -52,7 +51,6 @@ async function run() {
     await expect(desk.locator('#rate-badge')).toHaveText('1×');
     await importClip('renamed-duplicate.mp4');
     await expect(desk.locator('#import-results')).toContainText('already imported; skipped');
-    await desk.locator('#import-dialog .close-dialog').first().click();
     await expect(desk.locator('#race-count')).toContainText('2 races');
     await desk.locator('[data-command="holding"]').click();
     await expect(desk.locator('#playing-mode')).toContainText('HOLDING');
