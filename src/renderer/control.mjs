@@ -71,7 +71,7 @@ function updatePlayback(value) {
   const item = state.meeting.items.find(x => x.id === value.id) || (value.id === 'holding' ? holdingItem(state.meeting) : null);
   if (desktop && item) view.mirror(item, state.meeting, value);
   $('#now-title').textContent = value.title || 'Isaszeg Park';
-  $('#playing-mode').textContent = value.blackout ? 'BLACKOUT · PLAYBACK PAUSED' : value.mode === 'holding' ? 'HOLDING · PRESS N TO RESUME THE LOOP' : value.paused ? 'PAUSED' : value.phase === 'racecard' ? 'RACE CARD · REPLAY UP NEXT' : 'NOW PLAYING';
+  $('#playing-mode').textContent = value.blackout ? 'BLACKOUT · PLAYBACK PAUSED' : value.mode === 'holding' ? 'HOLDING · PRESS N TO RESUME THE LOOP' : value.paused ? 'PAUSED' : value.transitioning ? 'STARTING REPLAY' : value.phase === 'racecard' ? 'RACE CARD · REPLAY UP NEXT' : 'NOW PLAYING';
   $('#media-kind').textContent = value.phase === 'racecard' ? 'RACE CARD' : value.kind === 'race' ? 'RACE REPLAY' : value.kind === 'ad' ? 'SPONSOR AD' : 'HOLDING BANNER';
   $('#skip-racecard').hidden = value.phase !== 'racecard';
   $('#rate-badge').textContent = `${value.rate}×`;

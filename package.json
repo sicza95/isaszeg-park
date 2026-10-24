@@ -1,7 +1,7 @@
 {
   "name": "greyhound-replay",
   "productName": "Isaszeg Replay",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "An offline race-day replay desk and audience display for Isaszeg Park.",
   "main": "src/main/main.cjs",
   "private": true,

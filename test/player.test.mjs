@@ -105,10 +105,12 @@ test('linked replays show a timed card before starting video, including metadata
   const {player,video,meeting} = setup(t); registerFirst(meeting); player.setMeeting(meeting);
   player.command({type:'play',id:'race1'});
   assert.equal(player.status().phase,'racecard'); assert.equal(player.status().title,'Race 01 · CGRC Trophy');
-  assert.equal(player.status().duration,10); assert.equal(video.paused,true);
+  assert.equal(player.status().duration,11); assert.equal(video.paused,true);
   video.dispatchEvent(new Event('loadedmetadata')); assert.equal(video.paused,true);
   player.command({type:'scrub',fraction:.8}); player.command({type:'seek',delta:5}); assert.equal(video.currentTime,0);
   player.position = 10; player.tick();
+  assert.equal(player.status().phase,'racecard'); assert.equal(player.status().transitioning,true); assert.equal(video.paused,true);
+  player.position = 11; player.tick();
   assert.equal(player.status().phase,'media'); assert.equal(video.paused,false); assert.equal(video.currentTime,0);
 });
 
@@ -118,23 +120,43 @@ test('pause and blackout freeze the racecard, resume never starts hidden video',
   player.command({type:'toggle'}); assert.equal(video.paused,true);
   player.command({type:'blackout'}); player.last-=1000; player.tick(); assert.equal(player.position,3);
   player.command({type:'blackout'}); assert.equal(video.paused,true); assert.equal(player.status().paused,false);
-  player.command({type:'skip-racecard'}); assert.equal(video.paused,false); assert.equal(player.status().phase,'media');
+  player.command({type:'skip-racecard'}); assert.equal(player.position,10); assert.equal(player.status().transitioning,true);
+  player.position=11; player.tick(); assert.equal(video.paused,false); assert.equal(player.status().phase,'media');
 });
 
 test('every route into a linked replay shows its card and replay starts at zero', t => {
   const {player,video,meeting} = setup(t); registerFirst(meeting); player.setMeeting(meeting);
   for (const command of [{type:'next'},{type:'latest'},{type:'play',id:'race1'}]) {
     player.command(command); assert.equal(player.status().phase,'racecard'); assert.equal(video.paused,true);
-    player.command({type:'skip-racecard'}); video.currentTime=12;
+    player.command({type:'skip-racecard'}); player.position=11; player.tick(); video.currentTime=12;
     player.command({type:'holding'});
   }
   player.command({type:'previous'}); assert.equal(player.status().phase,'racecard'); assert.equal(video.currentTime,0);
 });
 
 test('editing the linked card updates the title without interrupting video', t => {
-  const {player,video,meeting} = setup(t); registerFirst(meeting); player.setMeeting(meeting); player.command({type:'latest'}); player.command({type:'skip-racecard'});
+  const {player,video,meeting} = setup(t); registerFirst(meeting); player.setMeeting(meeting); player.command({type:'latest'}); player.position=11; player.tick();
   video.currentTime=7; meeting.registration.races[0].title='Derby final'; player.setMeeting(structuredClone(meeting));
   assert.equal(player.status().title,'Race 01 · Derby final'); assert.equal(video.currentTime,7); assert.equal(player.status().phase,'media');
   player.command({type:'play',id:'race1'}); meeting.items[1].raceId=null; player.setMeeting(structuredClone(meeting));
   assert.equal(player.status().phase,'media'); assert.equal(video.paused,false);
+});
+
+test('reverse prelude is silent and restores audio and speed only for forward replay', t => {
+  const {player,video,meeting}=setup(t); registerFirst(meeting); meeting.settings.muted=false;
+  player.setMeeting(meeting); player.command({type:'latest'}); player.command({type:'rate',rate:.5});
+  assert.equal(video.muted,true); assert.equal(video.paused,true);
+  player.setMeeting(structuredClone(meeting)); assert.equal(video.muted,true);
+  player.position=11; player.tick();
+  assert.equal(video.muted,false); assert.equal(video.playbackRate,.5); assert.equal(video.currentTime,0);
+});
+
+test('skip retains pause and repeated skip commands do not restart the transition or replay', t => {
+  const {player,video,meeting}=setup(t); registerFirst(meeting); player.setMeeting(meeting); player.command({type:'latest'});
+  player.command({type:'toggle'}); player.command({type:'skip-racecard'});
+  player.last-=1000; player.tick(); assert.equal(player.position,10); assert.equal(video.paused,true);
+  player.command({type:'toggle'}); player.position=10.5; player.command({type:'skip-racecard'});
+  assert.equal(player.position,10.5);
+  player.position=11; player.tick(); video.currentTime=4; player.command({type:'skip-racecard'});
+  assert.equal(video.currentTime,4); assert.equal(player.status().phase,'media');
 });

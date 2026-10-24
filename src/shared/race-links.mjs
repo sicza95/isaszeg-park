@@ -32,3 +32,17 @@ export function racecardSeconds(meeting) {
   const value = meeting.settings.racecardSeconds;
   return Number.isFinite(value) ? Math.min(60, Math.max(5, value)) : 10;
 }
+
+export const RACECARD_TRANSITION_SECONDS = 1;
+
+export function racecardDuration(meeting) {
+  return racecardSeconds(meeting) + RACECARD_TRANSITION_SECONDS;
+}
+
+// Short recordings run backwards more slowly so the background lasts for the
+// whole card. Never seek past the last decodable frame or below zero.
+export function reverseRacecardTime(meeting, position, mediaDuration) {
+  const duration = racecardDuration(meeting);
+  const start = Math.min(duration, Math.max(0, mediaDuration - .04));
+  return start * Math.max(0, Math.min(1, 1 - position / duration));
+}

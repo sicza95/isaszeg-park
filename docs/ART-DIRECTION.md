@@ -27,4 +27,4 @@ Both sponsor concepts are disabled by default. They are mockups for layout revie
 
 ## Future animation
 
-Keep original race recordings visually unchanged. Animate holding slides and sponsor transitions only. Avoid flashing, intrusive particle overlays, overlays over the finish line, or decorative race jackets that violate the six-color mapping. Use high contrast and large text that can be read across the track.
+Racecards use muted reverse footage with blur and dimming behind warm charcoal graphics. The last second slides the card left while restoring normal video brightness and focus, then compact transparent runner overlays enter from the left as forward playback starts. Forward race recordings retain their original framing and colour. Avoid flashing, intrusive particle overlays, overlays over the finish line, or decorative race jackets that violate the six-color mapping. Use high contrast and large text that can be read across the track.

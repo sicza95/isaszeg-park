@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { bindRaceLinks, linkedRace, replayTitle, setRaceLink } from '../src/shared/race-links.mjs';
+import { bindRaceLinks, linkedRace, replayTitle, setRaceLink, racecardDuration, reverseRacecardTime } from '../src/shared/race-links.mjs';
 import { flag } from '../src/renderer/flags.mjs';
 import { COUNTRY_CODES } from '../src/shared/countries.mjs';
 import { racePresentation } from '../src/renderer/race-presentation.mjs';
@@ -40,4 +40,18 @@ test('racecard escapes saved text and includes entries, conditions and results',
   const html=racePresentation(meeting,race);
   for(const text of ['Trophy &lt;script&gt;','275 m','Greyhound','Oval','Fast &amp; free','hu.svg','31.5 kg','Finish 1','16.20 s','Split 3.4 s','Clear run','Owner','Trainer']) assert.ok(html.includes(text),text);
   assert.equal((html.match(/class="broadcast-entry/g)||[]).length,6);
+  const overlay=html.slice(html.indexOf('<div class="replay-details"'));
+  for(const text of ['Fast &amp; free','hu.svg','Owner / Trainer','broadcast-trap-1']) assert.ok(overlay.includes(text),text);
+  for(const text of ['REPLAY','31.5 kg','Finish 1','16.20 s','Split 3.4 s','Clear run','Empty trap','broadcast-origin']) assert.ok(!overlay.includes(text),text);
+});
+
+test('reverse prelude covers reading time plus the final second, including short clips', () => {
+  const meeting={settings:{racecardSeconds:10}};
+  assert.equal(racecardDuration(meeting),11);
+  assert.equal(reverseRacecardTime(meeting,0,60),11);
+  assert.ok(Math.abs(reverseRacecardTime(meeting,10,60)-1)<.001);
+  assert.equal(reverseRacecardTime(meeting,11,60),0);
+  assert.equal(reverseRacecardTime(meeting,20,60),0);
+  assert.equal(reverseRacecardTime(meeting,0,4),3.96);
+  assert.ok(Math.abs(reverseRacecardTime(meeting,5.5,4)-1.98)<.001);
 });

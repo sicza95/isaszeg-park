@@ -18,4 +18,6 @@ test('typing, modifiers and repeated keys never trigger playback commands', () =
   assert.equal(commandForKey({ key: 's', repeat: true }), null);
   assert.deepEqual(commandForKey({ key: '2' }), { type: 'rate', rate: .5 });
   assert.deepEqual(commandForKey({ key: 'R' }), { type: 'latest' });
+  assert.deepEqual(commandForKey({ key: 'Enter' }), { type: 'skip-racecard' });
+  assert.equal(commandForKey({ key:'Enter',target:{matches:selector=>selector.includes('button')} }),null);
 });

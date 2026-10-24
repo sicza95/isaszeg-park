@@ -4,6 +4,7 @@ const fs = require('node:fs/promises');
 const { pathToFileURL } = require('node:url');
 const { MeetingStore, localDate, validDate, atomicJSON } = require('./store.cjs');
 const { detectDrives, listMediaDirectory } = require('./drives.cjs');
+const { mediaResponse } = require('./media-response.cjs');
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'replay', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
 const locked = app.requestSingleInstanceLock();
@@ -111,6 +112,7 @@ async function boot() {
         file = candidate;
       }
       if (!file) return new Response('Not found', { status: 404 });
+      if (url.host === 'media') return await mediaResponse(file,request);
       const headers = {};
       if (request.headers.has('range')) headers.Range = request.headers.get('range');
       return await net.fetch(pathToFileURL(file).href, { method: request.method, headers });

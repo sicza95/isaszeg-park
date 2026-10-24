@@ -26,10 +26,11 @@ export function nextItem(queue, currentId, direction = 1) {
 export function commandForKey(event) {
   if (event.ctrlKey || event.metaKey || event.altKey || event.repeat) return null;
   if (event.target?.matches?.('input, textarea, select, [contenteditable="true"]')) return null;
+  if (event.key === 'Enter' && event.target?.matches?.('button, a, [role="button"]')) return null;
   const commands = {
     ' ': { type: 'toggle' }, ArrowLeft: { type: 'seek', delta: -5 }, ArrowRight: { type: 'seek', delta: 5 },
     n: { type: 'next' }, p: { type: 'previous' }, r: { type: 'latest' }, b: { type: 'holding' },
-    s: { type: 'cycle-rate' }, f: { type: 'fullscreen' },
+    s: { type: 'cycle-rate' }, f: { type: 'fullscreen' }, Enter: { type: 'skip-racecard' },
     '1': { type: 'rate', rate: 0.25 }, '2': { type: 'rate', rate: 0.5 }, '3': { type: 'rate', rate: 0.75 }, '4': { type: 'rate', rate: 1 }
   };
   return commands[event.key.length === 1 ? event.key.toLowerCase() : event.key] || null;

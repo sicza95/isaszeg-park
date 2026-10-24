@@ -19,7 +19,7 @@ async function run() {
     assert.ok(audience); audience.on('pageerror',error=>errors.push(error.message));
     const {referenceMeeting}=await import('../src/shared/reference-219.mjs');
     await desk.evaluate(async registration=>{await window.replay.saveRegistration(registration);await window.replay.patchSettings({racecardSeconds:5});},referenceMeeting);
-    const clip=path.resolve(__dirname,'../test/fixtures/sample.mp4');
+    const clip=process.env.ISASZEG_BROADCAST_CLIP || path.resolve(__dirname,'../test/fixtures/sample.mp4');
     await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});},clip);
     await desk.locator('#import-button').click();await desk.locator('#choose-files').click();await desk.locator('#confirm-import').click();
     await expect(desk.locator('#import-results')).toContainText('added to the loop');
@@ -37,16 +37,48 @@ async function run() {
     assert.equal(await audience.locator('video').evaluate(v=>v.paused),true);
     await expect(desk.locator('#seek')).toBeDisabled();
     await expect.poll(()=>audience.locator('.country-flag').evaluateAll(images=>images.every(img=>img.complete&&img.naturalWidth>0))).toBe(true);
+    await expect(audience.locator('video')).toBeVisible();
+    await expect.poll(()=>audience.locator('video').evaluate(v=>v.readyState>=2&&!v.seeking&&v.currentTime>.5)).toBe(true);
+    const reverseStart=await audience.locator('video').evaluate(v=>v.currentTime);
+    assert.equal(await audience.locator('video').evaluate(v=>v.muted),true);
     await fs.mkdir(path.join(__dirname,'../test-results'),{recursive:true});
     await audience.screenshot({path:path.join(__dirname,'../test-results/racecard.png')});
     await desk.screenshot({path:path.join(__dirname,'../test-results/linked-race-desk.png'),fullPage:true});
-    await desk.locator('[data-command="skip-racecard"]').click();
+    await desk.locator('#play-pause').click();
+    await expect.poll(()=>audience.locator('video').evaluate(v=>v.currentTime)).toBeLessThan(reverseStart-.25);
+    await desk.locator('#play-pause').click();
+    await audience.keyboard.press('Enter');
+    await expect(audience.locator('.racecard-exit')).toHaveCount(1);
     assert.equal(await audience.locator('video').evaluate(v=>v.paused),true,'Skipping a paused card retains pause');
     await desk.locator('#play-pause').click();
+    await audience.waitForTimeout(350);
+    const transition=await audience.locator('.stage').evaluate(stage=>({
+      progress:Number(stage.style.getPropertyValue('--racecard-exit')),
+      transform:getComputedStyle(stage.querySelector('.racecard-details')).transform,
+      filter:getComputedStyle(stage.querySelector('video')).filter
+    }));
+    assert.ok(transition.progress>0&&transition.progress<1,'Transition progresses over its final second');
+    assert.notEqual(transition.transform,'none');
+    await audience.screenshot({path:path.join(__dirname,'../test-results/racecard-transition.png')});
+    await expect(audience.locator('.replay-mode')).toHaveCount(1);
     await expect.poll(()=>audience.locator('video').evaluate(v=>v.currentTime)).toBeGreaterThan(.5);
+    await audience.waitForTimeout(800);
     await desk.locator('#play-pause').click();
-    await expect(audience.locator('.race-broadcast-entries')).toBeVisible();
+    await expect(audience.locator('.replay-details')).toBeVisible();
+    await expect(audience.locator('.replay-race-details')).toBeVisible();
+    await expect(audience.locator('.replay-race-details h3')).toHaveText('CGRC Trophy');
+    await expect(audience.locator('.replay-race-details')).toContainText('275 m');
+    await expect(audience.locator('.racecard-details')).toBeHidden();
+    await expect(audience.locator('.race-broadcast-tag')).toHaveCount(0);
     await expect(audience.locator('video')).toBeVisible();
+    const geometry=await audience.locator('.stage').evaluate(stage=>{
+      const video=stage.querySelector('video').getBoundingClientRect(),bounds=stage.getBoundingClientRect();
+      return {full:video.width===bounds.width&&video.height===bounds.height,filter:getComputedStyle(stage.querySelector('video')).filter,background:getComputedStyle(stage.querySelector('.replay-details')).backgroundColor,headerBackground:getComputedStyle(stage.querySelector('.replay-race-details')).backgroundColor};
+    });
+    assert.equal(geometry.full,true);assert.equal(geometry.filter,'none');assert.equal(geometry.background,'rgba(0, 0, 0, 0)');
+    assert.equal(geometry.headerBackground,'rgba(0, 0, 0, 0)');
+    await expect(desk.locator('#preview .replay-details')).toBeVisible();
+    await expect(audience.locator('.replay-details .broadcast-origin')).toHaveCount(0);
     await audience.screenshot({path:path.join(__dirname,'../test-results/race-replay-details.png')});
     // The saved card shortcut selects the right editor, and edits refresh the
     // broadcast while retaining the current video time and pause state.
@@ -56,6 +88,9 @@ async function run() {
     await desk.locator('#race-registration-form [name="title"]').fill('CGRC Trophy Final');
     await desk.locator('#race-registration-form [data-reg-save]').click();
     await expect(audience.locator('.race-broadcast h2')).toHaveText('CGRC Trophy Final');
+    await expect(audience.locator('.replay-race-details h3')).toHaveText('CGRC Trophy Final');
+    await expect.poll(()=>audience.locator('.replay-race-details').evaluate(header=>getComputedStyle(header).opacity)).toBe('1');
+    await expect.poll(()=>audience.locator('.replay-entry').last().evaluate(entry=>getComputedStyle(entry).opacity)).toBe('1');
     assert.equal(await audience.locator('video').evaluate(v=>v.currentTime),before);
     await desk.locator('[data-reg-tab="dogs"]').click();
     await expect(desk.locator('.reg-country .country-flag').first()).toBeVisible();
@@ -99,7 +134,7 @@ async function run() {
     if(overflows.length)await audience.screenshot({path:path.join(__dirname,'../test-results/race-layout-debug.png')});
     assert.deepEqual(overflows,[]);
     assert.deepEqual(errors,[]);assert.deepEqual(remote,[]);
-    console.log('Race broadcast smoke passed: offline flags, automatic linking, timed cards, paused cards, audience/preview sync, live race edits, shortcuts, relinking and persistence.');
+    console.log('Race broadcast smoke passed: reverse footage, one-second slide / unblur, Enter shortcut, full-stage video, transparent runner overlays, offline flags, pause, audience/preview sync, live edits, relinking and persistence.');
   } finally {
     await app.close();
     if(path.dirname(root)!==tempBase)throw new Error('Unexpected smoke-test cleanup path');
