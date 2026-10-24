@@ -48,7 +48,8 @@
     "nsis": {
       "oneClick": false,
       "perMachine": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "Isaszeg-Replay-${version}-Windows-Setup-${arch}.${ext}"
     },
     "mac": {
       "target": [
@@ -62,6 +63,9 @@
         "AppImage"
       ],
       "category": "AudioVideo"
+    },
+    "portable": {
+      "artifactName": "Isaszeg-Replay-${version}-Windows-Portable-${arch}.${ext}"
     }
   }
 }
