@@ -2,11 +2,13 @@
 
 Completed in the development workspace:
 
-- `npm test`: 17 passing tests covering storage, duplicate handling, import failures, numbering, serialization, dates, playlist scheduling, keyboard guards and player transport decisions.
+- `npm test`: 37 passing tests covering storage, duplicate handling, import failures, numbering, serialization, dates, registration, race links, offline flag assets, playlist scheduling, keyboard guards and racecard/player transport decisions.
 - `npm run check`: source and test JavaScript syntax checks pass; all three bundled artworks are present.
 - `git diff --check`: passes.
 - The generated holding image was visually reviewed and corrected to a white trap-3 jacket with a black 3. Both sponsor concepts were visually reviewed. Trap 6 is documented as black-and-white horizontal stripes with a red 6.
+- `npm run test:desktop`: passes on Windows with an isolated profile, real IPC and media decoding. Covers imports, duplicates, playback controls, removal, retained playback position, source preservation, disk persistence and the empty-loop fallback.
+- `npm run test:broadcast`: passes on Windows with external HTTP requests blocked. Covers automatic race linking, timed racecards, pause/skip behavior, audience/preview synchronization, loaded offline SVGs, the race editor shortcut, live title updates without rewinding, country picker previews, manual relinking and saved links after reload. The reference programme is checked for runner/header overflow in both card and video layouts. Screenshots are saved under `test-results/` for visual inspection.
 
-The local Electron / Chromium executables could not start inside this restricted execution environment (SIGTRAP). Therefore GUI layout, actual video decoding, Windows behavior, mounted-card discovery and dual physical monitors have **not** been validated here. The real Electron smoke test is included as `npm run test:desktop`, and the Linux build workflow is configured to run it under Xvfb. It must pass after repository access is configured.
+The restricted execution sandbox blocks Electron startup and system-temp atomic renames on this Windows host. The desktop checks were run with permission to launch the isolated test application; unit tests used the writable workspace `tmp/` folder for `TEMP` and `TMP`. Physical camera cards, mounted-drive discovery and dual physical monitors still require the track-side acceptance checks in OPERATIONS.md. Both desktop smoke tests are configured to run under Xvfb in Linux CI.
 
 The repository includes a Windows / macOS / Linux build workflow and a real desktop playback smoke test. Consult the GitHub Actions result for the specific commit before using its packaged application. Automated checks do not replace the physical-machine acceptance checklist in OPERATIONS.md.

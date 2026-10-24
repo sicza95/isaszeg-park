@@ -162,7 +162,7 @@ async function boot() {
   handle('output:show', showOutput);
   handle('output:hide', async () => { output?.hide(); outputVisible = false; return refresh(); });
   handle('transport', async command => {
-    if (!command || !['toggle', 'seek', 'scrub', 'next', 'previous', 'latest', 'holding', 'rate', 'cycle-rate', 'play', 'fullscreen', 'blackout'].includes(command.type)) throw new Error('Unknown playback command.');
+    if (!command || !['toggle', 'seek', 'scrub', 'next', 'previous', 'latest', 'holding', 'rate', 'cycle-rate', 'play', 'fullscreen', 'blackout', 'skip-racecard'].includes(command.type)) throw new Error('Unknown playback command.');
     if (command.type === 'fullscreen') { if (outputVisible) output.setFullScreen(!output.isFullScreen()); else await showOutput(selectedDisplay); return; }
     await ensureOutput(); send(output, 'command', command);
   }, 'either');

@@ -26,6 +26,9 @@ jobs:
       - name: Desktop playback smoke test
         if: runner.os == 'Linux'
         run: xvfb-run -a npm run test:desktop
+      - name: Linked race broadcast smoke test
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npm run test:broadcast
       - uses: actions/upload-artifact@v4
         if: always() && runner.os == 'Linux'
         with:

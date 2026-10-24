@@ -20,7 +20,7 @@ function validDate(date) {
 function defaults(date) {
   return {
     version: 1, date, title: 'Race day',
-    settings: { bannerSeconds: 12, adEvery: 2, sponsorRail: false, muted: true, defaultRate: 1, autoBrowse: true },
+    settings: { bannerSeconds: 12, racecardSeconds: 10, adEvery: 2, sponsorRail: false, muted: true, defaultRate: 1, autoBrowse: true },
     items: [
       { id: 'park', title: 'Welcome to Isaszeg Park', kind: 'banner', builtin: 'park', enabled: true, seconds: 12 },
       { id: 'redmills', title: 'Connolly’s RED MILLS', kind: 'ad', builtin: 'redmills', enabled: false, seconds: 10, mock: true },
@@ -77,13 +77,16 @@ class MeetingStore {
   update(date, change) { return this.exclusive(async () => { const data = await this.load(date); change(data); return this.save(data); }); }
   async saveRegistration(date, input) {
     const { validateRegistration } = await import('../shared/registration.mjs');
+    const { bindRaceLinks } = await import('../shared/race-links.mjs');
     const registration = validateRegistration(input);
-    return this.update(date, data => { data.registration = registration; });
+    return this.update(date, data => { bindRaceLinks(data); data.registration = registration; bindRaceLinks(data); });
   }
-  patchItem(date, id, patch) {
+  async patchItem(date, id, patch) {
+    const { setRaceLink } = await import('../shared/race-links.mjs');
     return this.update(date, data => {
       const item = data.items.find(x => x.id === id);
       if (!item) throw new Error('This item no longer exists.');
+      if (Object.hasOwn(patch, 'raceId')) setRaceLink(data, item, patch.raceId);
       if (typeof patch.enabled === 'boolean') item.enabled = patch.enabled;
       if (typeof patch.title === 'string' && patch.title.trim()) item.title = patch.title.trim().slice(0, 100);
       if (Number.isFinite(patch.seconds)) item.seconds = Math.min(120, Math.max(3, patch.seconds));
@@ -100,6 +103,7 @@ class MeetingStore {
     return this.update(date, data => {
       for (const key of ['sponsorRail', 'muted', 'autoBrowse']) if (typeof patch[key] === 'boolean') data.settings[key] = patch[key];
       if (Number.isFinite(patch.bannerSeconds)) data.settings.bannerSeconds = Math.min(120, Math.max(3, patch.bannerSeconds));
+      if (Number.isFinite(patch.racecardSeconds)) data.settings.racecardSeconds = Math.min(60, Math.max(5, patch.racecardSeconds));
       if (Number.isInteger(patch.adEvery)) data.settings.adEvery = Math.min(20, Math.max(1, patch.adEvery));
       if (RATES.includes(patch.defaultRate)) data.settings.defaultRate = patch.defaultRate;
     });
@@ -112,6 +116,7 @@ class MeetingStore {
   }
   importFiles(date, files, kind = 'race', startNumber) {
     return this.exclusive(async () => {
+      const { bindRaceLinks } = await import('../shared/race-links.mjs');
       if (!Array.isArray(files) || !files.length || files.length > 64 || !['race', 'banner', 'ad'].includes(kind)) throw new Error('Select between 1 and 64 media files.');
       const data = await this.load(date);
       const used = new Set(data.items.filter(x => x.kind === 'race').map(x => x.raceNumber));
@@ -153,6 +158,7 @@ class MeetingStore {
             mediaType: VIDEOS.has(ext) ? 'video' : 'image', ...(kind === 'race' ? { raceNumber: number } : {})
           };
           data.items.push(item);
+          bindRaceLinks(data);
           try { await this.save(data); } catch (e) { data.items.pop(); throw e; }
           destination = null;
           if (kind === 'race') { used.add(number); number++; }

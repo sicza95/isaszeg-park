@@ -33,6 +33,7 @@ async function run() {
     await importClip('camera-001.mp4');
     await expect(desk.locator('#import-results')).toContainText('added to the loop');
     await desk.locator('[data-command="latest"]').click();
+    await expect.poll(() => app.windows().some(window => window.url().endsWith('display.html')), { timeout: 15000 }).toBe(true);
     const audience = app.windows().find(window => window.url().endsWith('display.html'));
     assert.ok(audience, 'Audience window exists');
     audience.on('pageerror', error => errors.push(error.message));
@@ -94,7 +95,7 @@ async function run() {
     await expect(audience.locator('video')).toBeHidden();
     for (const race of races) assert.deepEqual(await fs.readFile(path.join(data.root, data.meeting.date, race.file)), await fs.readFile(path.join(card, race.originalName)));
     await importClip('sponsor.jpg', 'ad');
-    await desk.locator('#import-dialog .close-dialog').first().click();
+    await expect(desk.locator('#import-dialog')).toBeHidden();
     const creative = (await desk.evaluate(() => window.replay.init())).meeting.items.find(item => item.originalName === 'sponsor.jpg');
     await desk.locator('[data-page="creative"]').click();
     await desk.locator(`#creative-grid [data-enable="${creative.id}"]`).uncheck();

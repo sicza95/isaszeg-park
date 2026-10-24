@@ -8,6 +8,18 @@ Race fields: meeting title, venue, race number/title, grade, distance, track typ
 
 Desktop registration is stored under `registration` in each dated `meeting.json` and uses the existing serialized, atomic storage. It does not add recordings to the replay playlist. Import the matching recording with the race number shown on the card to associate it automatically. Registration and media imports preserve one another. Browser registration is stored in localStorage by meeting date; imported media still lasts only for the tab.
 
+## Linked replays and audience racecards
+
+Recordings and registered races with the same programme number connect automatically within that meeting, whichever is added first. Links are saved by race ID, so changing a registered race's number or title retains the correct card. Older manifests with only race numbers are supported. A removed or explicitly unlinked card is never silently replaced by a different race.
+
+Race desk shows **Linked race … · Edit race** under connected recordings. Click it to open that race's registration directly. **No linked race · Link race** opens the recording editor, where **Linked race** lets you select a registered race or remove the link. The displayed replay title comes from the linked registration; the media title remains the fallback for unlinked recordings.
+
+Each linked replay starts with a generated racecard, then plays the recording with the race name, programme number, meeting, venue, date, grade, distance, breed and track type in a header. A side panel retains all six trap positions, runner names and national flags, owners/trainers, running preferences, weights, and any recorded results, splits, going and remarks. Empty traps are labelled. The video fits beside these details without cropping the recording. Trap colours follow the track's existing mapping.
+
+The default racecard duration is 10 seconds, adjustable from 5–60 seconds in **Settings → Playback & display**. Pause and blackout freeze its countdown; replay speed affects the video only. **Play video now** skips the card and preserves the pause state. Every new play, loop return, Latest, Previous or Next entry into the recording shows its card. Updating registration during a video refreshes its details without rewinding it. Unlinked recordings play directly with their recording title.
+
+National flags are local SVG assets from [lipis/flag-icons](https://github.com/lipis/flag-icons), version 7.5.0, with its MIT license in `assets/flags/LICENSE`. Country pickers use country names with a flag preview; the registry, assigned dogs, racecards and replay panels use the same bundled flags. No network connection or emoji font support is required.
+
 ## Source and local media
 
 - Source: https://grwhracing.eu/result/219, detailed results, captured 24 October 2026.

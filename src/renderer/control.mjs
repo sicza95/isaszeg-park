@@ -3,6 +3,7 @@ import { makePlaylist, commandForKey, formatTime, holdingItem } from '../shared/
 import { StageView, Player } from './player.mjs';
 import { createRegistrationView } from './registration.mjs';
 import { createDemoAPI } from './demo-api.mjs';
+import { linkedRace, replayTitle } from '../shared/race-links.mjs';
 const $ = selector => document.querySelector(selector);
 const api = window.replay || createDemoAPI(); const desktop = Boolean(window.replay);
 let state, playback, activePage = 'desk', currentDirectory = null, parentDirectory = null, selection = new Map(), editingId, importing = false, removingId, removing = false, lastError;
@@ -29,7 +30,13 @@ function renderPlaylist() {
   $('#queue-count').textContent = queue.length;
   $('#race-count').textContent = races.length ? `${races.length} race${races.length === 1 ? '' : 's'} saved for this meeting` : 'No races imported yet';
   const items = all.filter(x => x.kind !== 'ad' || x.enabled);
-  $('#playlist').innerHTML = items.map(item => `<div class="queue-item${!item.enabled ? ' disabled' : ''}" data-item="${e(item.id)}"><input type="checkbox" data-enable="${e(item.id)}" ${item.enabled ? 'checked' : ''} aria-label="Include ${e(item.title)} in loop"><button class="queue-thumb" data-play="${e(item.id)}" aria-label="Play ${e(item.title)}" ${!item.enabled ? 'disabled' : ''}>${thumb(item)}</button><div class="queue-title"><button data-play="${e(item.id)}" ${!item.enabled ? 'disabled' : ''}>${e(item.title)}</button><small>${item.kind === 'race' ? `REPLAY · ${bytes(item.bytes)}` : item.kind === 'ad' ? `SPONSOR${item.mock ? ' · MOCK AD' : ''}` : `BANNER · ${item.seconds || 12}s`}</small></div><div class="queue-actions"><button class="icon-button" data-move="${e(item.id)}" data-direction="-1" aria-label="Move ${e(item.title)} up">${icon('up')}</button><button class="icon-button" data-move="${e(item.id)}" data-direction="1" aria-label="Move ${e(item.title)} down">${icon('down')}</button></div><button class="icon-button" data-edit="${e(item.id)}" aria-label="Edit ${e(item.title)}">${icon('edit')}</button><button class="icon-button danger" data-remove="${e(item.id)}" aria-label="Remove ${e(item.title)}" title="Remove ${e(item.title)}" ${state.busy ? 'disabled' : ''}>${icon('trash')}</button></div>`).join('') + (!races.length ? `<div class="queue-empty">Your race recordings will appear here.<br>Import the first clip to start the loop.</div>` : '');
+  $('#playlist').innerHTML = items.map(item => {
+    const race = linkedRace(state.meeting,item), title = e(replayTitle(state.meeting,item));
+    const link = item.kind === 'race' ? race
+      ? `<button class="race-link linked" data-edit-race="${e(race.id)}" title="Edit the linked race card">${icon('list')}Linked race ${String(race.number).padStart(2,'0')} · Edit race ${icon('arrow')}</button>`
+      : `<button class="race-link unlinked" data-edit="${e(item.id)}">${icon('list')}No linked race · Link race ${icon('arrow')}</button>` : '';
+    return `<div class="queue-item${!item.enabled ? ' disabled' : ''}" data-item="${e(item.id)}"><input type="checkbox" data-enable="${e(item.id)}" ${item.enabled ? 'checked' : ''} aria-label="Include ${title} in loop"><button class="queue-thumb" data-play="${e(item.id)}" aria-label="Play ${title}" ${!item.enabled ? 'disabled' : ''}>${thumb(item)}</button><div class="queue-title"><button data-play="${e(item.id)}" ${!item.enabled ? 'disabled' : ''} title="${title}">${title}</button><small>${item.kind === 'race' ? `REPLAY · ${bytes(item.bytes)}` : item.kind === 'ad' ? `SPONSOR${item.mock ? ' · MOCK AD' : ''}` : `BANNER · ${item.seconds || 12}s`}</small>${link}</div><div class="queue-actions"><button class="icon-button" data-move="${e(item.id)}" data-direction="-1" aria-label="Move ${title} up">${icon('up')}</button><button class="icon-button" data-move="${e(item.id)}" data-direction="1" aria-label="Move ${title} down">${icon('down')}</button></div><button class="icon-button" data-edit="${e(item.id)}" aria-label="Edit ${title}">${icon('edit')}</button><button class="icon-button danger" data-remove="${e(item.id)}" aria-label="Remove ${title}" title="Remove ${title}" ${state.busy ? 'disabled' : ''}>${icon('trash')}</button></div>`;
+  }).join('') + (!races.length ? `<div class="queue-empty">Your race recordings will appear here.<br>Import the first clip to start the loop.</div>` : '');
   updateCurrentRow();
 }
 function updateCurrentRow() { document.querySelectorAll('.queue-item').forEach(row => row.classList.toggle('current', row.dataset.item === playback?.id)); }
@@ -64,12 +71,14 @@ function updatePlayback(value) {
   const item = state.meeting.items.find(x => x.id === value.id) || (value.id === 'holding' ? holdingItem(state.meeting) : null);
   if (desktop && item) view.mirror(item, state.meeting, value);
   $('#now-title').textContent = value.title || 'Isaszeg Park';
-  $('#playing-mode').textContent = value.blackout ? 'BLACKOUT · PLAYBACK PAUSED' : value.mode === 'holding' ? 'HOLDING · PRESS N TO RESUME THE LOOP' : value.paused ? 'PAUSED' : 'NOW PLAYING';
-  $('#media-kind').textContent = value.kind === 'race' ? 'RACE REPLAY' : value.kind === 'ad' ? 'SPONSOR AD' : 'HOLDING BANNER';
+  $('#playing-mode').textContent = value.blackout ? 'BLACKOUT · PLAYBACK PAUSED' : value.mode === 'holding' ? 'HOLDING · PRESS N TO RESUME THE LOOP' : value.paused ? 'PAUSED' : value.phase === 'racecard' ? 'RACE CARD · REPLAY UP NEXT' : 'NOW PLAYING';
+  $('#media-kind').textContent = value.phase === 'racecard' ? 'RACE CARD' : value.kind === 'race' ? 'RACE REPLAY' : value.kind === 'ad' ? 'SPONSOR AD' : 'HOLDING BANNER';
+  $('#skip-racecard').hidden = value.phase !== 'racecard';
   $('#rate-badge').textContent = `${value.rate}×`;
   $('#elapsed').textContent = value.mode === 'holding' ? 'HOLD' : formatTime(value.position);
   $('#duration').textContent = formatTime(value.duration);
-  $('#seek').disabled = item?.mediaType !== 'video';
+  $('#seek').disabled = item?.mediaType !== 'video' || value.phase === 'racecard';
+  document.querySelectorAll('[data-seek]').forEach(button=>button.disabled = $('#seek').disabled);
   if (document.activeElement !== $('#seek')) $('#seek').value = value.duration ? Math.min(1000, value.position / value.duration * 1000) : 0;
   $('#play-pause').innerHTML = icon(value.paused ? 'play' : 'pause'); $('#play-pause').setAttribute('aria-label', value.paused ? 'Play' : 'Pause');
   document.querySelectorAll('[data-rate]').forEach(button => button.classList.toggle('selected', Number(button.dataset.rate) === value.rate));
@@ -136,12 +145,18 @@ async function importSelected() {
 }
 function openEdit(id) {
   const item = state.meeting.items.find(x => x.id === id); if (!item) return;
-  editingId = id; $('#edit-title').value = item.title; $('#edit-duration').value = item.seconds || 12; $('#edit-duration-label').hidden = item.mediaType === 'video'; $('#edit-dialog').showModal();
+  editingId = id; $('#edit-title').value = item.title; $('#edit-duration').value = item.seconds || 12; $('#edit-duration-label').hidden = item.mediaType === 'video';
+  $('#edit-race-label').hidden = item.kind !== 'race';
+  const race = linkedRace(state.meeting,item);
+  $('#edit-race').innerHTML = `<option value="">No linked race</option>${(state.meeting.registration?.races||[]).slice().sort((a,b)=>a.number-b.number).map(r=>`<option value="${e(r.id)}">Race ${String(r.number).padStart(2,'0')} · ${e(r.title)}</option>`).join('')}`;
+  $('#edit-race').value = race?.id || '';
+  $('#edit-race-help').textContent = state.meeting.registration?.races.length ? 'The linked race supplies the display name, racecard and replay details.' : 'Register a race in Races & dogs, then link it here. Matching race numbers connect automatically.';
+  $('#edit-dialog').showModal();
 }
 function openRemove(id) {
   if (state.busy || removing) return;
   const item = state.meeting.items.find(x => x.id === id); if (!item) return;
-  removingId = id; $('#remove-title').textContent = item.title; $('#remove-dialog').showModal();
+  removingId = id; $('#remove-title').textContent = replayTitle(state.meeting,item); $('#remove-dialog').showModal();
 }
 async function removeSelected() {
   if (!removingId || state.busy || removing) return;
@@ -174,6 +189,7 @@ document.addEventListener('click', event => {
     if (button.dataset.play) await api.command({ type: 'play', id: button.dataset.play });
     if (button.dataset.move) await moveItem(button.dataset.move, Number(button.dataset.direction));
     if (button.dataset.edit) openEdit(button.dataset.edit);
+    if (button.dataset.editRace) { navigate('registration'); registration.openRace(button.dataset.editRace); }
     if (button.dataset.remove) openRemove(button.dataset.remove);
     if (button.dataset.drive) await browse(button.dataset.drive);
     if (button.dataset.directory) await browse(button.dataset.directory);
@@ -208,7 +224,12 @@ $('#display-select').addEventListener('change', () => safely(async () => { if (s
 for (const id of ['reveal-button', 'open-folder']) $(`#${id}`).addEventListener('click', () => safely(() => api.revealFolder()));
 $('#change-root').addEventListener('click', () => safely(async () => { const next = await api.chooseRoot(); if (next) setState(next); }));
 $('#shortcuts-button').addEventListener('click', () => $('#shortcuts-dialog').showModal());
-$('#edit-form').addEventListener('submit', event => { event.preventDefault(); safely(async () => { setState(await api.patchItem(editingId, { title: $('#edit-title').value, seconds: Number($('#edit-duration').value) })); $('#edit-dialog').close(); }); });
+$('#edit-form').addEventListener('submit', event => { event.preventDefault(); safely(async () => {
+  const patch = { title: $('#edit-title').value, seconds: Number($('#edit-duration').value) };
+  const item = state.meeting.items.find(item=>item.id===editingId);
+  if (item?.kind === 'race' && $('#edit-race').value !== (linkedRace(state.meeting,item)?.id || '')) patch.raceId = $('#edit-race').value || null;
+  setState(await api.patchItem(editingId,patch)); $('#edit-dialog').close();
+}); });
 document.addEventListener('keydown', event => {
   if (document.querySelector('dialog[open]')) return;
   if (event.key === '?' && !event.target.matches('input,textarea,select')) { event.preventDefault(); $('#shortcuts-dialog').showModal(); return; }

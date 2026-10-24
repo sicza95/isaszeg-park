@@ -24,6 +24,6 @@ These checks require the actual track PC, camera card and monitors. They are not
 
 ## Deliberate scope
 
-This first version is a replay and signage utility. It does not ingest live cameras, resolve split camera files, concatenate recordings, edit finish-line results, generate standings, record streams or provide frame-accurate race adjudication. Additional metadata such as runner names or distances can be added later without changing the date-folder workflow.
+This is a replay, race registration and signage utility. Linked race metadata and optional recorded results appear in generated racecards and beside replays. It does not ingest live cameras, resolve split camera files, concatenate recordings, generate standings, record streams or provide frame-accurate race adjudication.
 
 The app writes a manifest using a staging file and rename. SHA-256 verifies copies before publishing them. This protects against incomplete imports but is not a substitute for backups or storage hardware durability. Interrupted imports may leave hidden `.part` files; they are never in the manifest or playlist and may be removed while the app is closed.

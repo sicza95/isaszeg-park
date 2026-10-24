@@ -1,7 +1,8 @@
 import { validateRegistration } from '../shared/registration.mjs';
+import { bindRaceLinks, setRaceLink } from '../shared/race-links.mjs';
 const dateNow = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Budapest', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 function fresh(date) {
-  return { version: 1, date, title: 'Race day', settings: { bannerSeconds: 12, adEvery: 2, sponsorRail: false, muted: true, defaultRate: 1, autoBrowse: true }, items: [
+  return { version: 1, date, title: 'Race day', settings: { bannerSeconds: 12, racecardSeconds: 10, adEvery: 2, sponsorRail: false, muted: true, defaultRate: 1, autoBrowse: true }, items: [
     { id: 'park', title: 'Welcome to Isaszeg Park', kind: 'banner', builtin: 'park', enabled: true, seconds: 12, mediaType: 'image', url: '../../assets/park.jpg' },
     { id: 'redmills', title: 'Connolly’s RED MILLS', kind: 'ad', builtin: 'redmills', enabled: false, seconds: 10, mediaType: 'image', url: '../../assets/redmills.jpg', mock: true },
     { id: 'pedro', title: 'PEDRO', kind: 'ad', builtin: 'pedro', enabled: false, seconds: 10, mediaType: 'image', url: '../../assets/pedro.jpg', mock: true }
@@ -26,9 +27,9 @@ export function createDemoAPI() {
   return {
     init: async () => state(), on: (name, callback) => { const fn = e => callback(e.detail); events.addEventListener(name, fn); return () => events.removeEventListener(name, fn); },
     openMeeting: async next => { if (!/^\d{4}-\d{2}-\d{2}$/.test(next)) throw new Error('Choose a valid date.'); date = next; if (!meetings.has(date)) meetings.set(date, makeMeeting(date)); return refresh(); },
-    saveRegistration: async input => { const data = validateRegistration(input); localStorage.setItem('isaszeg-registration-' + date, JSON.stringify(data)); meetings.get(date).registration = structuredClone(data); return refresh(); },
+    saveRegistration: async input => { const data = validateRegistration(input); localStorage.setItem('isaszeg-registration-' + date, JSON.stringify(data)); const meeting = meetings.get(date); bindRaceLinks(meeting); meeting.registration = structuredClone(data); bindRaceLinks(meeting); return refresh(); },
     dates: async () => [...meetings.keys()],
-    patchItem: async (id, patch) => { Object.assign(meetings.get(date).items.find(x => x.id === id), patch); return refresh(); },
+    patchItem: async (id, patch) => { const meeting = meetings.get(date), item = meeting.items.find(x => x.id === id); if (!item) throw new Error('This item no longer exists.'); if (Object.hasOwn(patch,'raceId')) setRaceLink(meeting,item,patch.raceId); Object.assign(item, patch); return refresh(); },
     removeItem: async id => {
       const meeting = meetings.get(date); const index = meeting.items.findIndex(item => item.id === id);
       if (index < 0) throw new Error('This item no longer exists.');
@@ -50,7 +51,7 @@ export function createDemoAPI() {
         if (kind === 'race' && !video) { results.push({ source: file.name, status: 'error', message: 'Choose a video for a race.' }); continue; }
         while (meeting.items.some(x => x.raceNumber === number)) number++;
         const item = { id: crypto.randomUUID(), kind, title: kind === 'race' ? `Race ${String(number).padStart(2, '0')}` : file.name.replace(/\.[^.]+$/, ''), raceNumber: kind === 'race' ? number++ : undefined, bytes: file.size, url: URL.createObjectURL(file), mediaType: video ? 'video' : 'image', enabled: true, seconds: meeting.settings.bannerSeconds, importedAt: new Date().toISOString() };
-        meeting.items.push(item); results.push({ source: file.name, status: 'imported', item });
+        meeting.items.push(item); bindRaceLinks(meeting); results.push({ source: file.name, status: 'imported', item });
       }
       refresh(); return { results };
     },
