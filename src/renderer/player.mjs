@@ -114,7 +114,7 @@ export class Player {
     this.view.video.playbackRate = this.rate;
     if (changedDay) { this.failed.clear(); const first = this.available()[0]; this.mode = first ? 'loop' : 'holding'; this.paused = false; this.blackout = false; this.load(first || this.holding()); }
     else {
-      const current = meeting.items.find(x => x.id === this.item?.id);
+      const current = this.queue.find(x => x.playlistSlot === this.item?.playlistSlot) || meeting.items.find(x => x.id === this.item?.id);
       if (current && (current.enabled || this.mode === 'holding')) {
         if (current.url !== this.item.url) this.load(current); else this.item = current;
       } else if (this.mode === 'holding') this.load(this.holding());
@@ -165,7 +165,7 @@ export class Player {
       else { this.paused = true; this.emit(); }
     }, 1800);
   }
-  advance(direction = 1) { this.mode = 'loop'; const queue = this.available(); const next = nextItem(queue, this.item?.id, direction); if (next) this.load(next); else { this.mode = 'holding'; this.load(this.holding()); } }
+  advance(direction = 1) { this.mode = 'loop'; const queue = this.available(); const next = nextItem(queue, this.item, direction); if (next) this.load(next); else { this.mode = 'holding'; this.load(this.holding()); } }
   status() {
     const video = this.item?.mediaType === 'video' && this.phase !== 'racecard';
     return {
@@ -174,7 +174,7 @@ export class Player {
       phase: this.phase, raceId: linkedRace(this.meeting,this.item)?.id || null,
       transitioning: this.phase === 'racecard' && this.position >= racecardSeconds(this.meeting),
       paused: this.paused, rate: this.rate, mode: this.mode, blackout: this.blackout, error: this.error,
-      kind: this.item?.kind, next: replayTitle(this.meeting,nextItem(this.available(), this.item?.id))
+      kind: this.item?.kind, next: replayTitle(this.meeting,nextItem(this.available(), this.item))
     };
   }
   emit() { this.lastReport = performance.now(); this.report(this.status()); }

@@ -23,6 +23,78 @@ function setup(t) {
   player.setMeeting(structuredClone(meeting));
   return { player, video, view, meeting, race };
 }
+function sponsorLoop(t, sponsorCount) {
+  const state = setup(t);
+  const { meeting, race, player } = state;
+  meeting.date = '2026-10-04';
+  meeting.settings.adEvery = 1;
+  const sponsors = Array.from({ length: sponsorCount }, (_, i) => ({ id: `ad${i + 1}`, title: `Sponsor ${i + 1}`, kind: 'ad', mediaType: 'image', url: `ad${i + 1}.jpg`, seconds: 3, enabled: true }));
+  meeting.items.push(...[2, 3, 4, 5].map(race), ...sponsors);
+  player.setMeeting(structuredClone(meeting));
+  const expected = ['park', ...[1, 2, 3, 4, 5].flatMap(n => [`race${n}`, sponsors[(n - 1) % sponsorCount].id])];
+  return { ...state, expected };
+}
+
+for (const sponsorCount of [1, 2, 3]) {
+  test(`five races and the banner complete two automatic loops with ${sponsorCount} sponsor(s)`, t => {
+    const { player, video, expected } = sponsorLoop(t, sponsorCount);
+    const played = [];
+    for (let i = 0; i < expected.length * 2; i++) {
+      played.push(player.status().id);
+      if (player.item.mediaType === 'video') video.dispatchEvent(new Event('ended'));
+      else { player.position = player.item.seconds; player.tick(); }
+    }
+    assert.deepEqual(played, [...expected, ...expected]);
+    assert.equal(player.status().id, 'park');
+  });
+}
+
+test('Next, Previous and the next-item label follow repeated sponsor slots in both directions', t => {
+  const { player, expected, meeting } = sponsorLoop(t, 2);
+  for (const direction of [1, -1]) {
+    player.command({ type: 'play', id: 'park' });
+    for (let step = 0; step < expected.length * 2; step++) {
+      const index = ((step * direction) % expected.length + expected.length) % expected.length;
+      assert.equal(player.status().id, expected[index]);
+      // A state refresh must preserve the occurrence of a repeated sponsor.
+      player.setMeeting(structuredClone(meeting));
+      const nextId = expected[(index + 1) % expected.length];
+      assert.equal(player.status().next, meeting.items.find(item => item.id === nextId).title);
+      player.command({ type: direction === 1 ? 'next' : 'previous' });
+    }
+    assert.equal(player.status().id, 'park');
+  }
+});
+
+test('the default two-race cadence completes the loop with a repeated video sponsor', t => {
+  const { player, meeting, video } = sponsorLoop(t, 1);
+  meeting.settings.adEvery = 2;
+  const ad = meeting.items.find(item => item.kind === 'ad');
+  ad.mediaType = 'video'; ad.url = 'ad1.mp4';
+  player.setMeeting(structuredClone(meeting));
+  const expected = ['park', 'race1', 'race2', 'ad1', 'race3', 'race4', 'ad1', 'race5'];
+  for (const id of [...expected, ...expected]) {
+    assert.equal(player.status().id, id);
+    if (player.item.mediaType === 'video') video.dispatchEvent(new Event('ended'));
+    else { player.position = player.item.seconds; player.tick(); }
+  }
+  assert.equal(player.status().id, 'park');
+});
+
+test('removing a sponsor during a replay keeps its position and includes every race in subsequent loops', t => {
+  const { player, meeting, video } = sponsorLoop(t, 3);
+  player.command({ type: 'play', id: 'race4' });
+  video.currentTime = 7;
+  meeting.items = meeting.items.filter(item => item.id !== 'ad3');
+  player.setMeeting(structuredClone(meeting));
+  assert.equal(video.currentTime, 7);
+  const expected = ['race4', 'ad2', 'race5', 'ad1', 'park', 'race1', 'ad1', 'race2', 'ad2', 'race3', 'ad1'];
+  for (const id of [...expected, ...expected]) {
+    assert.equal(player.status().id, id);
+    player.command({ type: 'next' });
+  }
+});
+
 test('appending a race retains active playback position, URL and selected slow rate', t => {
   const { player, video, meeting, race } = setup(t);
   player.command({ type: 'latest' }); player.command({ type: 'rate', rate: .5 }); video.currentTime = 7.25;

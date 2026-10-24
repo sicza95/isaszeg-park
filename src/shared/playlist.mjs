@@ -6,7 +6,6 @@ export function makePlaylist(meeting) {
   const items = meeting.items.filter(item => item.enabled);
   const ads = items.filter(item => item.kind === 'ad');
   const content = items.filter(item => item.kind !== 'ad');
-  if (!content.length) return ads;
   const queue = []; let races = 0; let adCount = 0;
   const interval = Math.max(1, meeting.settings.adEvery || 2);
   for (const item of content) {
@@ -15,11 +14,18 @@ export function makePlaylist(meeting) {
   }
   // Every enabled ad receives a slot, including on a meeting with no races yet.
   if (adCount < ads.length) queue.push(...ads.slice(adCount));
-  return queue;
+  // A creative can appear more than once. Give each occurrence its own
+  // transient identity so navigation and state refreshes retain the right slot.
+  const occurrences = new Map();
+  return queue.map(item => {
+    const occurrence = occurrences.get(item.id) || 0;
+    occurrences.set(item.id, occurrence + 1);
+    return { ...item, playlistSlot: JSON.stringify([item.id, occurrence]) };
+  });
 }
-export function nextItem(queue, currentId, direction = 1) {
+export function nextItem(queue, current, direction = 1) {
   if (!queue.length) return null;
-  const index = queue.findIndex(x => x.id === currentId);
+  const index = queue.findIndex(x => current?.playlistSlot ? x.playlistSlot === current.playlistSlot : x.id === (current?.id ?? current));
   if (index === -1) return queue[0];
   return queue[(index + direction + queue.length) % queue.length];
 }
