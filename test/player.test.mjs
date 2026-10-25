@@ -232,3 +232,64 @@ test('skip retains pause and repeated skip commands do not restart the transitio
   player.position=11; player.tick(); video.currentTime=4; player.command({type:'skip-racecard'});
   assert.equal(video.currentTime,4); assert.equal(player.status().phase,'media');
 });
+
+function timedReplay(t) {
+  const state = setup(t), { player, meeting } = state;
+  registerFirst(meeting);
+  meeting.registration.races[0].entries = [{trap:4,dogId:'winner',finish:'1',time:'29.11'},{trap:2,dogId:'absent',finish:'NR'}];
+  player.setMeeting(meeting); player.command({type:'latest'}); player.position=11; player.tick();
+  return state;
+}
+
+test('recorded times add a results outro on the final frame before advancing the loop', t => {
+  const { player, video } = timedReplay(t);
+  video.currentTime=20; video.dispatchEvent(new Event('ended'));
+  assert.equal(player.status().phase,'results'); assert.equal(player.status().id,'race1');
+  assert.equal(player.status().position,0); assert.equal(player.status().mediaPosition,20);
+  assert.equal(video.paused,true); assert.equal(video.muted,true);
+  video.dispatchEvent(new Event('ended')); assert.equal(player.status().phase,'results');
+  player.position=player.status().duration; player.tick();
+  assert.equal(player.status().id,'park'); assert.equal(player.status().phase,'media');
+});
+
+test('pause, blackout and metadata keep results frozen; media transport cannot seek or restart footage', t => {
+  const { player, video, meeting } = timedReplay(t);
+  video.currentTime=20; video.dispatchEvent(new Event('ended'));
+  player.position=1.2; player.command({type:'toggle'}); player.last-=1000; player.tick();
+  assert.equal(player.status().position,1.2);
+  for (const command of [{type:'seek',delta:-5},{type:'scrub',fraction:.1},{type:'skip-racecard'}]) player.command(command);
+  assert.equal(video.currentTime,20);
+  player.setMeeting(structuredClone(meeting)); assert.equal(player.status().position,1.2);
+  video.dispatchEvent(new Event('loadedmetadata')); assert.equal(video.paused,true);
+  player.command({type:'toggle'}); assert.equal(video.paused,true);
+  player.command({type:'blackout'}); player.last-=1000; player.tick(); assert.equal(player.status().position,1.2);
+  player.command({type:'blackout'}); assert.equal(video.paused,true);
+  player.command({type:'next'}); assert.equal(player.status().id,'park');
+  player.command({type:'previous'}); assert.equal(player.status().phase,'racecard');
+});
+
+test('untimed replays advance directly and removing the active results safely advances', t => {
+  const { player, video, meeting } = timedReplay(t);
+  video.dispatchEvent(new Event('ended'));
+  meeting.registration.races[0].entries=[];
+  player.setMeeting(structuredClone(meeting)); assert.equal(player.status().id,'park');
+  player.command({type:'latest'}); player.position=11; player.tick();
+  video.dispatchEvent(new Event('ended')); assert.equal(player.status().id,'park');
+});
+
+test('dedicated jump commands restart each section while preserving pause, rate and race',t=>{
+  const {player,video}=timedReplay(t);
+  player.command({type:'rate',rate:.5});player.command({type:'toggle'});video.currentTime=8;
+  player.command({type:'jump-results'});assert.equal(player.phase,'results');assert.ok(video.currentTime>19.9);assert.equal(player.position,0);assert.equal(video.paused,true);
+  player.position=2;player.command({type:'jump-results'});assert.equal(player.position,0);
+  player.command({type:'jump-racecard'});assert.equal(player.phase,'racecard');assert.equal(player.position,0);
+  player.command({type:'jump-replay'});assert.equal(player.phase,'media');assert.equal(video.currentTime,0);assert.equal(player.paused,true);assert.equal(player.rate,.5);
+  assert.equal(player.item.id,'race1');player.command({type:'toggle'});assert.equal(video.paused,false);
+});
+
+test('jumping to unavailable results or a banner safely does nothing',t=>{
+  const {player,video,meeting}=setup(t);registerFirst(meeting);player.setMeeting(meeting);player.command({type:'latest'});
+  player.command({type:'jump-results'});assert.equal(player.phase,'racecard');
+  player.command({type:'jump-replay'});assert.equal(player.phase,'media');assert.equal(video.paused,false);
+  player.command({type:'holding'});player.command({type:'jump-racecard'});player.command({type:'jump-replay'});assert.equal(player.item.id,'park');
+});

@@ -4,6 +4,7 @@ import { StageView, Player } from './player.mjs';
 import { createRegistrationView } from './registration.mjs';
 import { createDemoAPI } from './demo-api.mjs';
 import { linkedRace, replayTitle } from '../shared/race-links.mjs';
+import { raceResults } from '../shared/race-results.mjs';
 const $ = selector => document.querySelector(selector);
 const api = window.replay || createDemoAPI(); const desktop = Boolean(window.replay);
 let state, playback, activePage = 'desk', currentDirectory = null, parentDirectory = null, selection = new Map(), editingId, importing = false, removingId, removing = false, lastError;
@@ -98,13 +99,18 @@ function updatePlayback(value) {
   const item = state.meeting.items.find(x => x.id === value.id) || (value.id === 'holding' ? holdingItem(state.meeting) : null);
   if (desktop && item) view.mirror(item, state.meeting, value);
   $('#now-title').textContent = value.title || 'Isaszeg Park';
-  $('#playing-mode').textContent = value.blackout ? 'BLACKOUT · PLAYBACK PAUSED' : value.mode === 'holding' ? 'HOLDING · PRESS N TO RESUME THE LOOP' : value.paused ? 'PAUSED' : value.transitioning ? 'STARTING REPLAY' : value.phase === 'racecard' ? 'RACE CARD · REPLAY UP NEXT' : 'NOW PLAYING';
-  $('#media-kind').textContent = value.phase === 'racecard' ? 'RACE CARD' : value.kind === 'race' ? 'RACE REPLAY' : value.kind === 'ad' ? 'SPONSOR AD' : 'HOLDING BANNER';
-  $('#skip-racecard').hidden = value.phase !== 'racecard';
+  $('#playing-mode').textContent = value.blackout ? 'BLACKOUT · PLAYBACK PAUSED' : value.mode === 'holding' ? 'HOLDING · PRESS N TO RESUME THE LOOP' : value.paused ? 'PAUSED' : value.transitioning ? 'STARTING REPLAY' : value.phase === 'racecard' ? 'RACE CARD · REPLAY UP NEXT' : value.phase === 'results' ? 'RACE RESULTS · FINISHING ORDER' : 'NOW PLAYING';
+  $('#media-kind').textContent = value.phase === 'racecard' ? 'RACE CARD' : value.phase === 'results' ? 'RACE RESULTS' : value.kind === 'race' ? 'RACE REPLAY' : value.kind === 'ad' ? 'SPONSOR AD' : 'HOLDING BANNER';
+  const race=linkedRace(state.meeting,item),linked=Boolean(race&&item?.mediaType==='video');
+  for(const button of document.querySelectorAll('[data-jump]')){
+    button.disabled=!linked || (button.dataset.jump==='results'&&!raceResults(race).hasTimes);
+    button.setAttribute('aria-current',String(linked&&button.dataset.jump===(value.phase==='media'?'replay':value.phase)));
+    button.title=!linked?'Play a linked race recording to jump between its sections.':button.disabled?'No finish times recorded yet.':`Jump to ${button.textContent.trim().toLowerCase()}`;
+  }
   $('#rate-badge').textContent = `${value.rate}×`;
   $('#elapsed').textContent = value.mode === 'holding' ? 'HOLD' : formatTime(value.position);
   $('#duration').textContent = formatTime(value.duration);
-  $('#seek').disabled = item?.mediaType !== 'video' || value.phase === 'racecard';
+  $('#seek').disabled = item?.mediaType !== 'video' || value.phase !== 'media';
   document.querySelectorAll('[data-seek]').forEach(button=>button.disabled = $('#seek').disabled);
   if (document.activeElement !== $('#seek')) $('#seek').value = value.duration ? Math.min(1000, value.position / value.duration * 1000) : 0;
   $('#play-pause').innerHTML = icon(value.paused ? 'play' : 'pause'); $('#play-pause').setAttribute('aria-label', value.paused ? 'Play' : 'Pause');

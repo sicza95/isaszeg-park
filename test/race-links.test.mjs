@@ -40,7 +40,7 @@ test('racecard escapes saved text and includes entries, conditions and results',
   const html=racePresentation(meeting,race);
   for(const text of ['Trophy &lt;script&gt;','275 m','Greyhound','Oval','Fast &amp; free','hu.svg','31.5 kg','Finish 1','16.20 s','Split 3.4 s','Clear run','Owner','Trainer']) assert.ok(html.includes(text),text);
   assert.equal((html.match(/class="broadcast-entry/g)||[]).length,6);
-  const overlay=html.slice(html.indexOf('<div class="replay-details"'));
+  const overlay=html.slice(html.indexOf('<div class="replay-details"'),html.indexOf('<div class="results-card'));
   for(const text of ['Fast &amp; free','hu.svg','Owner / Trainer','broadcast-trap-1']) assert.ok(overlay.includes(text),text);
   for(const text of ['REPLAY','31.5 kg','Finish 1','16.20 s','Split 3.4 s','Clear run','Empty trap','broadcast-origin']) assert.ok(!overlay.includes(text),text);
 });

@@ -1,9 +1,9 @@
 import {escapeHTML as e} from './icons.mjs';
 import {nameKey} from '../shared/registry.mjs';
 
-export function entityField(label,name,kind,id,entities,{placeholder='Type a name to search or create…',extra=''}={}) {
+export function entityField(label,name,kind,id,entities,{placeholder='Type a name to search or create…',extra='',hideLabel=false}={}) {
   const entity=entities.find(item=>item.id===id), listId=`choices-${crypto.randomUUID()}`;
-  return `<div class="reg-field entity-field"><label for="${listId}-input">${label}</label><div class="entity-picker" data-kind="${kind}"><input id="${listId}-input" type="text" data-entity-input autocomplete="off" maxlength="160" value="${e(entity?.name||'')}" placeholder="${e(placeholder)}" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${listId}"><input type="hidden" name="${name}" value="${e(id||'')}"><div id="${listId}" class="entity-choices" role="listbox" hidden></div></div>${extra}</div>`;
+  return `<div class="reg-field entity-field"><label${hideLabel?' class="sr-only"':''} for="${listId}-input">${label}</label><div class="entity-picker" data-kind="${kind}"><input id="${listId}-input" type="text" data-entity-input autocomplete="off" maxlength="160" value="${e(entity?.name||'')}" placeholder="${e(placeholder)}" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${listId}"><input type="hidden" name="${name}" value="${e(id||'')}"><div id="${listId}" class="entity-choices" role="listbox" hidden></div></div>${extra}</div>`;
 }
 
 export function requireEntitySelections(form) {

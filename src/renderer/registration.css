@@ -55,15 +55,19 @@
 .reg-section-row .reg-help{margin:6px 0 17px 31px}
 .trap-entries{display:flex;flex-direction:column;gap:9px}
 .trap-entry{background:#1d1d20;border:1px solid #3e3e41;border-radius:7px}
-.trap-entry-main{display:flex;align-items:center;gap:12px;padding:12px}
-.trap-badge{display:flex;align-items:center;justify-content:center;width:32px;height:36px;border-radius:5px;font-size:19px;font-weight:750;box-shadow:inset 0 0 0 1px #ffffff26;flex-shrink:0}
-.trap-1{background:#d71920;color:#fff}
-.trap-2{background:#1768c4;color:#fff}
-.trap-3{background:#fff;color:#111}
-.trap-4{background:#111;color:#fff}
-.trap-5{background:#f5d52c;color:#111}
-.trap-6{background:repeating-linear-gradient(0deg,#fff 0px,#fff 6px,#111 6px,#111 12px);color:#d71920;text-shadow:0 0 2px white,1px 1px white,-1px -1px white}
-.trap-dog-select{flex:1;gap:5px}
+.entry-columns,.trap-entry-main{display:grid;grid-template-columns:22px 32px minmax(100px,1fr) repeat(3,minmax(65px,.5fr));align-items:center;gap:8px;padding:12px}
+.entry-columns{padding-top:0;padding-bottom:0;font-size:8px;letter-spacing:.6px;color:#93939f}
+.entry-columns>span:nth-child(n+4){text-align:center}
+.entry-order{font-size:17px;text-align:center;font-variant-numeric:tabular-nums;color:#9999a7}
+.entry-winner{color:#e4c48d;font-weight:650}
+.trap-dog-line{display:flex;align-items:center;gap:3px;min-width:0}
+.trap-dog-line>.entity-field{flex:1;min-width:0}
+.trap-dog-line>.icon-button{padding:3px;width:23px;min-width:23px;height:30px;min-height:30px}
+.trap-dog-line>.icon-button svg{width:13px;height:13px}
+.trap-entry-main>.reg-field input{text-align:center;font-variant-numeric:tabular-nums;padding:8px 4px}
+.trap-entry-main .reg-field{position:relative}
+.trap-dog-select small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.trap-dog-select{flex:1;gap:5px;min-width:0}
 .trap-dog-select select{padding:7px 9px;min-height:33px;font-size:11px}
 .trap-dog-select small{font-size:9px;color:#909093;padding-left:2px}
 .entry-results{border-top:1px solid #363639}
@@ -151,17 +155,16 @@
 @media(max-width:450px){.reg-toolbar{flex-wrap:wrap}.reg-toolbar-actions{margin-left:auto}}
 
 .entity-picker{position:relative;min-width:0}
-.race-editor{overflow:visible}
+.race-editor{overflow:visible;min-width:0}
 .entity-choices{position:absolute;left:0;right:0;top:calc(100% + 5px);z-index:20;max-height:210px;overflow:auto;padding:5px;border:1px solid #52525b;border-radius:7px;background:#232327;box-shadow:0 12px 30px #0008}
 .entity-choices button{display:block;width:100%;text-align:left;padding:9px 8px;font-size:12px;border-radius:4px;overflow-wrap:anywhere}
 .entity-choices button:hover,.entity-choices button[aria-selected=true]{background:#404048;color:#fff}
 .entity-no-matches{padding:9px 8px;font-size:11px;color:var(--muted)}
-.entry-primary-results{grid-template-columns:repeat(3,minmax(0,1fr));padding:0 12px 13px;gap:12px}
-.entry-primary-results input,.entry-primary-results select{min-height:34px;padding:7px;font-size:11px}
 .trap-dog-select input{min-height:34px;padding:7px 9px;font-size:11px}
 .trap-dog-select small{margin-top:5px}
 .reg-person-dialog{max-width:470px}
 .reg-toolbar{flex-wrap:wrap}
 .reg-tabs{flex-wrap:wrap}
 .reg-toolbar-actions{margin-left:auto}
-@media(max-width:450px){.entry-primary-results{grid-template-columns:1fr}.reg-tabs button{padding:10px 7px;font-size:10px}}
+@media(max-width:450px){.reg-tabs button{padding:10px 7px;font-size:10px}}
+@media(max-width:720px){.trap-entries{overflow-x:auto;padding-bottom:6px}.entry-columns,.trap-entry{min-width:560px}}

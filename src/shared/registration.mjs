@@ -1,3 +1,5 @@
+import { entryStatus, finishingOrder, RUNNER_STATUSES, RESULT_STATUSES } from './race-results.mjs';
+
 const text = (value, max = 160) => typeof value === 'string' ? value.trim().slice(0, max) : '';
 function validateRegistration(input) {
   if (!input || !Array.isArray(input.races) || !Array.isArray(input.dogs) || input.races.length > 500 || input.dogs.length > 20000) throw new Error('Invalid registration data.');
@@ -40,18 +42,20 @@ function validateRegistration(input) {
       if (dogs.find(dog=>dog.id===dogId).breed !== race.breed) throw new Error('The dog breed must match the race.');
       traps.add(trap); entered.add(dogId);
       const result = {trap,dogId};
-      const finish = text(entry.finish);
-      if (finish && !['1','2','3','4','5','6','NR','DNF','DQ'].includes(finish)) throw new Error('Choose a finish position or result status.');
-      result.finish = finish;
+      if (entry.status && !Object.hasOwn(RUNNER_STATUSES,entry.status)) throw new Error('Choose a runner status.');
+      if (entry.finish && !['1','2','3','4','5','6','NR','DNF','DQ'].includes(entry.finish)) throw new Error('Choose a runner status.');
+      result.status = entryStatus(entry);
       for (const key of ['weight','split','finalSplit','time','estimatedTime']) {
         const value = text(entry[key]);
         if (value && (!Number.isFinite(Number(value)) || Number(value) <= 0)) throw new Error('Weights and times must be positive numbers.');
         result[key] = value;
       }
-      if (['NR','DNF','DQ'].includes(finish) && (result.time || result.estimatedTime)) throw new Error('Clear finish times for a non-runner, DNF or disqualification.');
+      if (RESULT_STATUSES[result.status] && (result.time || result.estimatedTime)) throw new Error('Clear finish times for a non-runner, DNF or disqualification.');
       result.remarks = text(entry.remarks, 500); result.going = text(entry.going, 30);
       return result;
     });
+    const {places} = finishingOrder({entries});
+    for (const entry of entries) entry.finish = String(places.get(entry.trap) || '');
     return {id,number,title,distance,breed:race.breed,type:race.type,grade:text(race.grade,20),sourceUrl:text(race.sourceUrl),videoReference:text(race.videoReference),entries};
   });
   return {title:text(input.title)||'Race day',track:text(input.track)||'Isaszeg Park',source:text(input.source),races,dogs,people};

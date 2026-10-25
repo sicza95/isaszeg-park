@@ -1,17 +1,18 @@
 import { icon, escapeHTML as e } from './icons.mjs';
-import { TRAPS } from '../shared/traps.mjs';
+import { trapBadge } from './trap-badge.mjs';
 import { referenceMeeting } from '../shared/reference-219.mjs';
 import { validateRegistration } from '../shared/registration.mjs';
 import { linkedRace } from '../shared/race-links.mjs';
 import { flag, countryName, countryField } from './flags.mjs';
 import { entityField, attachEntityPickers, requireEntitySelections } from './entity-picker.mjs';
 import { nameKey, withRegistry } from '../shared/registry.mjs';
+import { entryStatus, finishingOrder, finishTime, RESULT_STATUSES } from '../shared/race-results.mjs';
+import { statusField, setStatusField, attachStatusFields } from './runner-status.mjs';
 
 const empty = () => ({title:'Race day',track:'Isaszeg Park',races:[],dogs:[],people:[]});
 const options = (values, selected) => values.map(value => { const [id,label] = Array.isArray(value) ? value : [value,value]; return `<option value="${e(String(id))}" ${String(id) === String(selected) ? 'selected' : ''}>${e(String(label))}</option>`; }).join('');
-const field = (label, name, value = '', extra = '') => `<label class="reg-field">${label}<input name="${name}" value="${e(String(value ?? ''))}" ${extra}></label>`;
+const field = (label, name, value = '', extra = '', compact = false) => `<label class="reg-field">${compact?`<span class="sr-only">${label}</span>`:label}<input name="${name}" value="${e(String(value ?? ''))}" ${extra}></label>`;
 const select = (label, name, values, value) => `<label class="reg-field">${label}<select name="${name}">${options(values,value)}</select></label>`;
-const trapBadge = number => `<span class="trap-badge trap-${number}" title="${e(TRAPS[number-1].description)}">${number}</span>`;
 
 export function createRegistrationView({api,toast,setState,openImport}) {
   const root = document.querySelector('#registration-page');
@@ -44,10 +45,16 @@ export function createRegistrationView({api,toast,setState,openImport}) {
         if(editingDog)return;
         if(name.startsWith('dog-')){
           const trap=name.split('-')[1];
-          if(current()?.entries.find(entry=>entry.trap===Number(trap))?.dogId!==entity?.id)for(const key of ['weight','finish','split','finalSplit','time','estimatedTime','going','remarks'])root.querySelector(`[name="${key}-${trap}"]`).value='';
+          const row=root.querySelector(`[name="dog-${trap}"]`).closest('.trap-entry');
+          if(current()?.entries.find(entry=>entry.trap===Number(trap))?.dogId!==entity?.id){
+            for(const key of ['weight','status','split','finalSplit','time','estimatedTime','going','remarks'])root.querySelector(`[name="${key}-${trap}"]`).value='';
+            delete row.dataset.statusBeforeEmpty;
+            setStatusField(row.querySelector('.runner-status-field'),entity?'ENTERED':'EMPTY');
+          }
+          syncEntryAvailability();
           markDirty();capture();
           if(entity){render();if(created)editDog(entity.id);}
-          else {const row=root.querySelector(`[name="dog-${trap}"]`).closest('.trap-entry');row.querySelector('[data-reg-dog]').disabled=true;row.querySelector('.trap-dog-select small').textContent='Leave empty or press Enter to register a new dog';}
+          else {row.querySelector('.trap-dog-select small').textContent='Search or press Enter to add a dog';refreshOrders();}
         }
       }
     });
@@ -64,10 +71,24 @@ export function createRegistrationView({api,toast,setState,openImport}) {
     race.entries = Array.from({length:6},(_,i)=>i+1).flatMap(trap=> {
       const dogId = values.get(`dog-${trap}`); if (!dogId) return [];
       const entry = {trap,dogId};
-      for (const key of ['weight','finish','split','finalSplit','time','estimatedTime','going','remarks']) entry[key] = String(values.get(`${key}-${trap}`)||'');
+      for (const key of ['weight','status','split','finalSplit','time','estimatedTime','going','remarks']) entry[key] = String(values.get(`${key}-${trap}`)||'');
+      entry.status=entryStatus(entry);
       return [entry];
     });
     data.title = String(values.get('meetingTitle')||'Race day'); data.track = String(values.get('track')||'Isaszeg Park');
+  }
+  function refreshOrders() {
+    const {places}=finishingOrder(current());
+    for(const output of root.querySelectorAll('[data-entry-order]')){
+      const place=places.get(Number(output.dataset.entryOrder));
+      output.textContent=place || '-';output.classList.toggle('entry-winner',place===1);
+    }
+  }
+  function updateTimeStatus(trap) {
+    const field=root.querySelector(`[name="status-${trap}"]`).closest('.runner-status-field');
+    if(RESULT_STATUSES[field.querySelector('input').value])return;
+    const entry={time:root.querySelector(`[name="time-${trap}"]`).value,estimatedTime:root.querySelector(`[name="estimatedTime-${trap}"]`).value};
+    setStatusField(field,finishTime(entry)?'FIN':'ENTERED');
   }
   function remember() { if(state) drafts.set(`${state.root}/${state.meeting.date}`,{data:structuredClone(data),selectedId,dirty}); }
   function markDirty() { dirty = true; const status=root.querySelector('#registration-status'); if(status) status.textContent='Unsaved changes'; if(!root.querySelector('[data-reg-action="discard"]')){const button=document.createElement('button');button.className='text-button';button.dataset.regAction='discard';button.textContent='Discard changes';root.querySelector('.reg-toolbar-actions')?.insertBefore(button,root.querySelector('.reg-toolbar-actions .button'));} root.querySelectorAll('[data-reg-save]').forEach(b=>b.disabled=false); }
@@ -79,7 +100,21 @@ export function createRegistrationView({api,toast,setState,openImport}) {
   }
   function renderSave() {
     root.querySelectorAll('[data-reg-save]').forEach(button=>{button.disabled=saving||!dirty||state?.busy;button.innerHTML=`${icon('check')}${saving?'Saving…':'Save meeting'}`;});
-    root.querySelectorAll('#race-registration-form input,#race-registration-form select').forEach(input=>input.disabled=saving);
+    root.querySelectorAll('#race-registration-form input,#race-registration-form select,#race-registration-form .runner-status-trigger,#race-registration-form [data-status-value]').forEach(input=>input.disabled=saving);
+    syncEntryAvailability();
+  }
+  function syncEntryAvailability() {
+    for(const row of root.querySelectorAll('.trap-entry')){
+      const hasDog=Boolean(row.querySelector('.entity-picker input[type=hidden]').value);
+      const field=row.querySelector('.runner-status-field'),value=field.querySelector('input').value;
+      if(!hasDog&&value!=='EMPTY'){
+        row.dataset.statusBeforeEmpty=value;
+        setStatusField(field,'EMPTY');
+        field.querySelector('[role=listbox]').hidden=true;
+        field.querySelector('[role=combobox]').setAttribute('aria-expanded','false');
+      }else if(hasDog&&value==='EMPTY')setStatusField(field,row.dataset.statusBeforeEmpty || 'ENTERED');
+      for(const control of row.querySelectorAll('input,select,textarea,button'))control.disabled=saving || (!hasDog&&!control.closest('.entity-picker'));
+    }
   }
   function render() {
     if(!state) return;
@@ -88,7 +123,7 @@ export function createRegistrationView({api,toast,setState,openImport}) {
       <div class="reg-toolbar"><div class="reg-tabs" role="tablist" aria-label="Registration view"><button role="tab" aria-selected="${activeTab==='races'}" data-reg-tab="races">Races <span>${data.races.length}</span></button><button role="tab" aria-selected="${activeTab==='dogs'}" data-reg-tab="dogs">Dog registry <span>${data.dogs.length}</span></button><button role="tab" aria-selected="${activeTab==='people'}" data-reg-tab="people">Owners & trainers <span>${data.people.length}</span></button></div><div class="reg-toolbar-actions"><span id="registration-status" role="status">${dirty?'Unsaved changes':data.races.length||data.dogs.length?'All changes saved':'Ready for your first entry'}</span>${dirty?'<button class="text-button" data-reg-action="discard">Discard changes</button>':''}<button class="button primary small" data-reg-action="${activeTab==='races'?'new-race':activeTab==='dogs'?'new-dog':'new-person'}">${icon('plus')}${activeTab==='races'?'Add race':activeTab==='dogs'?'Register dog':'Add person'}</button></div></div>
       ${activeTab==='races'?racePage():activeTab==='dogs'?dogPage():peoplePage()}
       <p class="reg-footnote">${icon('check')} ${window.replay?'Races save by meeting. Dogs and people share a global registry.':'Registration saves in this browser on this device.'} <span>Source: grwhracing.eu/result/219 · captured 24 October 2026</span></p>`;
-    renderSave(); wirePickers(root);
+    renderSave(); wirePickers(root); attachStatusFields(root);
   }
   function racePage() {
     const race = current();
@@ -103,15 +138,15 @@ export function createRegistrationView({api,toast,setState,openImport}) {
       <div class="reg-form-section"><div class="reg-section-label"><span>01</span> MEETING DETAILS</div><div class="reg-fields reg-fields-two">${field('Meeting name','meetingTitle',data.title,'required maxlength="160"')}${field('Venue / track','track',data.track,'required maxlength="160"')}</div></div>
       <div class="reg-form-section"><div class="reg-section-label"><span>02</span> RACE DETAILS</div><div class="reg-fields reg-race-details">${field('Race number','number',race.number,'type="number" min="1" max="9999" required')}${field('Race title','title',race.title,'required maxlength="160"')}${field('Grade','grade',race.grade,'placeholder="e.g. S3, A2, OR" maxlength="20"')}${field('Distance (m)','distance',race.distance,'type="number" min="50" max="2000" required')}${select('Track type','type',['Oval','Straight'],race.type)}${select('Breed','breed',['Greyhound','Whippet'],race.breed)}</div></div>
       <div class="reg-form-section"><div class="reg-section-row"><div><div class="reg-section-label"><span>03</span> DOGS & TRAP ASSIGNMENTS</div><p class="reg-help">Choose up to six dogs. Leave unused traps empty.</p></div><button type="button" class="text-button" data-reg-action="new-dog">${icon('plus')}Register dog</button></div>
-      <div class="trap-entries">${Array.from({length:6},(_,i)=>entryEditor(race,i+1)).join('')}</div></div>
+      <div class="trap-entries"><div class="entry-columns" aria-hidden="true"><span title="Finish order">#</span><span>TRAP</span><span>DOG</span><span>STATUS</span><span>SPLIT</span><span>TIME</span></div>${Array.from({length:6},(_,i)=>entryEditor(race,i+1)).join('')}</div></div>
       <div class="reg-form-section"><div class="reg-section-label"><span>04</span> RACE RECORDING</div><div class="reg-video-row">${icon('film')}<div><strong>${clip?e(clip.title):reference?'Local reference recording':'No recording imported'}</strong><p>${e(reference||'Import the clip using this race number to connect it to the card.')}</p></div><button type="button" class="button quiet small" data-reg-action="import">${icon('plus')}Import clip</button></div>${source?`<details class="reg-video-details"><summary>Preview ${clip?'race recording':'local reference video'}</summary><video controls preload="none" src="${e(source)}" aria-label="Race ${race.number} recording"></video><p class="reg-help">${clip?'Imported recording is in the replay loop.':'Reference preview from local-assets. Import it to add it to the replay loop.'}</p></details>`:''}</div>
       <div class="reg-save-bar"><span>${icon('check')} ${dirty?'Ready to save your changes.':'This card is saved with the meeting.'}</span><button type="submit" class="button primary" data-reg-save>${icon('check')}Save meeting</button></div></form>`;
   }
   function entryEditor(race,trap) {
     const entry=race.entries.find(en=>en.trap===trap)||{},dog=data.dogs.find(d=>d.id===entry.dogId);
-    return `<div class="trap-entry"><div class="trap-entry-main">${trapBadge(trap)}<div class="trap-dog-select">${entityField(`Dog in trap ${trap}`,`dog-${trap}`,'dog',entry.dogId,data.dogs,{placeholder:'Search dogs or type a new name…'})}<small>${dog?`${flag(dog.country)} ${e(`${dog.owner||'Owner not entered'} · ${dog.preference||'—'}`)}`:'Leave empty or press Enter to register a new dog'}</small></div><button type="button" class="icon-button" data-reg-dog="${e(entry.dogId||'')}" ${!dog?'disabled':''} aria-label="Edit dog in trap ${trap}">${icon('edit')}</button></div>
-      <div class="reg-fields entry-primary-results">${select('Finish / status',`finish-${trap}`,[['','Not recorded'],...['1','2','3','4','5','6'],['NR','NR · Non-runner'],['DNF','Did not finish'],['DQ','Disqualified']],entry.finish||'')}${field('Final split (s)',`finalSplit-${trap}`,entry.finalSplit,'type="number" min="0.01" step="0.01"')}${field('Time (s)',`time-${trap}`,entry.time,'type="number" min="0.01" step="0.01"')}</div>
-      <details class="entry-results"><summary>Weigh-in & additional results</summary><div class="reg-fields entry-result-fields">${field('Weight (kg)',`weight-${trap}`,entry.weight,'type="number" min="0.01" step="0.01"')}${field('Est. time (s)',`estimatedTime-${trap}`,entry.estimatedTime,'type="number" min="0.01" step="0.01"')}${field('Split (s)',`split-${trap}`,entry.split,'type="number" min="0.01" step="0.01"')}${field('Going',`going-${trap}`,entry.going,'placeholder="e.g. N" maxlength="30"')}${field('Remarks',`remarks-${trap}`,entry.remarks,'maxlength="500"')}</div></details></div>`;
+    const place=finishingOrder(race).places.get(trap);
+    return `<div class="trap-entry"><div class="trap-entry-main"><output class="entry-order${place===1?' entry-winner':''}" data-entry-order="${trap}" aria-label="Finish order for trap ${trap}">${place || '-'}</output>${trapBadge(trap)}<div class="trap-dog-select"><div class="trap-dog-line">${entityField(`Dog in trap ${trap}`,`dog-${trap}`,'dog',entry.dogId,data.dogs,{placeholder:'Search or add dog…',hideLabel:true})}<button type="button" class="icon-button" data-reg-dog="${e(entry.dogId||'')}" ${!dog?'disabled':''} aria-label="Edit dog in trap ${trap}">${icon('edit')}</button></div><small>${dog?`${flag(dog.country)} ${e([dog.owner,dog.preference].filter(Boolean).join(' · '))}`:'Search or press Enter to add a dog'}</small></div>${statusField(trap,entry)}${field(`Split for trap ${trap} (s)`,`split-${trap}`,entry.split,'type="number" min="0.01" step="0.01"',true)}${field(`Time for trap ${trap} (s)`,`time-${trap}`,entry.time,'type="number" min="0.01" step="0.01"',true)}</div>
+      <details class="entry-results"><summary>Weigh-in & additional results</summary><div class="reg-fields entry-result-fields">${field('Weight (kg)',`weight-${trap}`,entry.weight,'type="number" min="0.01" step="0.01"')}${field('Est. time (s)',`estimatedTime-${trap}`,entry.estimatedTime,'type="number" min="0.01" step="0.01"')}${field('Final split (s)',`finalSplit-${trap}`,entry.finalSplit,'type="number" min="0.01" step="0.01"')}${field('Going',`going-${trap}`,entry.going,'placeholder="e.g. N" maxlength="30"')}${field('Remarks',`remarks-${trap}`,entry.remarks,'maxlength="500"')}</div></details></div>`;
   }
   function dogPage() {
     const list=data.dogs.filter(d=>`${d.name} ${d.owner} ${d.trainer}`.toLowerCase().includes(dogQuery.toLowerCase()));
@@ -157,12 +192,15 @@ export function createRegistrationView({api,toast,setState,openImport}) {
     });});
     dogDialog.showModal();
   }
-  root.addEventListener('input',event=>{if(['reg-dog-search','reg-person-search'].includes(event.target.id)){if(event.target.id==='reg-dog-search')dogQuery=event.target.value;else personQuery=event.target.value;const pos=event.target.selectionStart;render();const input=root.querySelector('#'+event.target.id);input.focus();input.setSelectionRange(pos,pos);return;}if(event.target.closest('form'))markDirty();});
+  root.addEventListener('input',event=>{if(['reg-dog-search','reg-person-search'].includes(event.target.id)){if(event.target.id==='reg-dog-search')dogQuery=event.target.value;else personQuery=event.target.value;const pos=event.target.selectionStart;render();const input=root.querySelector('#'+event.target.id);input.focus();input.setSelectionRange(pos,pos);return;}if(event.target.closest('form')){markDirty();if(event.target.matches('[data-entity-input]'))syncEntryAvailability();if(/^(time|estimatedTime)-/.test(event.target.name)){updateTimeStatus(event.target.name.split('-')[1]);capture();refreshOrders();}}});
   root.addEventListener('change',event=>{
     if(!event.target.closest('form'))return;
     markDirty();
-    if(event.target.name?.startsWith('finish-')&&['NR','DNF','DQ'].includes(event.target.value)){const trap=event.target.name.split('-')[1];for(const key of ['time','estimatedTime'])root.querySelector(`[name="${key}-${trap}"]`).value='';}
-    if(event.target.name?.startsWith('dog-')){const trap=event.target.name.split('-')[1];for(const key of ['weight','finish','split','finalSplit','time','estimatedTime','going','remarks'])root.querySelector(`[name="${key}-${trap}"]`).value='';}
+    if(event.target.name?.startsWith('status-')){
+      if(RESULT_STATUSES[event.target.value]){const trap=event.target.name.split('-')[1];for(const key of ['time','estimatedTime'])root.querySelector(`[name="${key}-${trap}"]`).value='';}
+      capture();refreshOrders();
+    }
+    if(event.target.name?.startsWith('dog-')){const trap=event.target.name.split('-')[1];for(const key of ['weight','status','split','finalSplit','time','estimatedTime','going','remarks'])root.querySelector(`[name="${key}-${trap}"]`).value='';}
     if(event.target.name?.startsWith('dog-')||event.target.name==='breed'){capture();render();}
   });
   root.addEventListener('submit',event=>{event.preventDefault();attempt(save);});

@@ -20,6 +20,12 @@ async function run() {
     console.log('Registered a dog without an owner.');
     await desk.locator('[data-reg-tab=races]').click();await desk.locator('[data-reg-action=new-race]').first().click();
     await desk.locator('[name=title]').fill('Evening final');
+    for(const trap of [1,2,3,4,5,6]){
+      const row=desk.locator('.trap-entry').nth(trap-1);
+      await expect(desk.getByRole('combobox',{name:`Status for trap ${trap}`,exact:true})).toContainText('Empty trap');
+      assert.equal(await row.evaluate(row=>[...row.querySelectorAll('input,select,button')].filter(control=>!control.closest('.entity-picker')).every(control=>control.disabled)),true,'Empty traps disable all other fields');
+      await expect(desk.getByRole('combobox',{name:`Dog in trap ${trap}`,exact:true})).toBeEnabled();
+    }
     const trap=desk.getByRole('combobox',{name:'Dog in trap 1',exact:true});
     await trap.fill('Swift Runner');await trap.press('Enter');
     await expect(desk.locator('#reg-dog-title')).toHaveText('Edit dog');
@@ -39,10 +45,52 @@ async function run() {
     await desk.getByRole('button',{name:'Save dog',exact:true}).click();
     await expect(desk.locator('.reg-dog-dialog')).not.toBeVisible();
     await expect(desk.locator('[name=title]')).toHaveValue('Evening final');
-    for(const field of ['finish','finalSplit','time'])await expect(desk.locator(`[name="${field}-1"]`)).toBeVisible();
-    await desk.locator('[name=finish-1]').selectOption('1');await desk.locator('[name=finalSplit-1]').fill('7.22');await desk.locator('[name=time-1]').fill('16.78');
+    for(const field of ['split','time'])await expect(desk.locator(`[name="${field}-1"]`)).toBeVisible();
+    await expect(desk.getByRole('combobox',{name:'Status for trap 1',exact:true})).toContainText('Entered');
+    await expect(desk.getByRole('combobox',{name:'Status for trap 1',exact:true})).toBeEnabled();
+    assert.equal(await desk.locator('.trap-entry').first().evaluate(row=>[...row.querySelectorAll('input,select,button')].every(control=>!control.disabled)),true,'Selecting a dog enables the row');
+    await expect(desk.locator('.runner-status-dot')).toHaveCount(0);
+    await expect(desk.locator('.runner-status-trigger > .runner-status')).toHaveCount(0);
+    await expect(desk.locator('.runner-status-caret').first()).toBeVisible();
+    await expect(desk.locator('.trap-dog-select label').first()).toHaveClass('sr-only');
+    await expect(desk.locator('[data-entry-order="1"]')).toHaveText('-');
+    await expect(desk.locator('[name=finalSplit-1]')).toBeHidden();
+    await desk.locator('[name=split-1]').fill('7.22');await desk.locator('[name=time-1]').fill('16.78');
+    await expect(desk.locator('[data-entry-order="1"]')).toHaveText('1');
+    await expect(desk.getByRole('combobox',{name:'Status for trap 1',exact:true})).toContainText('Finished');
+    assert.equal(await desk.getByRole('combobox',{name:'Status for trap 1',exact:true}).evaluate(button=>getComputedStyle(button).backgroundColor),'rgb(24, 62, 50)','The entire status button uses its status color');
+    const secondDog=desk.getByRole('combobox',{name:'Dog in trap 2',exact:true});
+    await secondDog.fill('Fleet');await desk.getByRole('option',{name:'Fleet Father',exact:true}).click();
+    await desk.locator('[name=time-2]').fill('17.10');await expect(desk.locator('[data-entry-order="2"]')).toHaveText('2');
+    await desk.locator('[name=time-2]').fill('16.50');await expect(desk.locator('[data-entry-order="2"]')).toHaveText('1');await expect(desk.locator('[data-entry-order="1"]')).toHaveText('2');
+    const widths=await desk.locator('.trap-entry-main').first().evaluate(row=>[row.querySelector('.runner-status-field'),row.querySelector('[name=split-1]').parentElement,row.querySelector('[name=time-1]').parentElement].map(cell=>cell.getBoundingClientRect().width));
+    assert.ok(widths.every(width=>Math.abs(width-widths[0])<1),'Status, split and time have equal width');
+    await fs.mkdir(path.resolve(__dirname,'../test-results'),{recursive:true});
+    await desk.locator('.trap-entries').screenshot({path:path.resolve(__dirname,'../test-results/registration-status-order.png')});
+    await secondDog.fill('');await desk.locator('[name=time-1]').focus();
+    await expect(desk.getByRole('combobox',{name:'Status for trap 2',exact:true})).toContainText('Empty trap');
+    await expect(desk.locator('[name=time-2]')).toBeDisabled();
+    await expect(desk.locator('[name=split-2]')).toBeDisabled();
+    await expect(desk.locator('[data-entry-order="1"]')).toHaveText('1');
+    const status=desk.getByRole('combobox',{name:'Status for trap 1',exact:true});
+    await status.press('ArrowDown');await expect(desk.getByRole('listbox',{name:'Status for trap 1',exact:true})).toBeVisible();
+    await desk.getByRole('option',{name:'Finished',exact:true}).press('End');await desk.getByRole('option',{name:'Disqualified',exact:true}).press('Escape');
+    await expect(status).toHaveAttribute('aria-expanded','false');await expect(desk.locator('[name=status-1]')).toHaveValue('FIN');
+    const originalSize=await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(window=>window.webContents.getURL().includes('index.html')).getSize());
+    for(const width of [1040,620,375]){
+      await app.evaluate(({BrowserWindow},width)=>{const window=BrowserWindow.getAllWindows().find(window=>window.webContents.getURL().includes('index.html'));window.setMinimumSize(320,640);window.setSize(width,980);},width);
+      await expect.poll(()=>desk.evaluate(()=>document.documentElement.scrollWidth>innerWidth),{timeout:2000}).toBe(false);
+      await status.scrollIntoViewIfNeeded();
+      await desk.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+      await status.evaluate(button=>button.focus({preventScroll:true}));await status.press('ArrowDown');
+      const menu=desk.getByRole('listbox',{name:'Status for trap 1',exact:true});
+      await expect(menu).toBeVisible();
+      assert.equal(await menu.evaluate(menu=>{const bounds=menu.getBoundingClientRect();return bounds.left>=0&&bounds.right<=innerWidth&&bounds.top>=0&&bounds.bottom<=innerHeight;}),true,'Status menu remains inside the viewport');
+      await desk.getByRole('option',{name:'Finished',exact:true}).press('Escape');
+    }
+    await app.evaluate(({BrowserWindow},size)=>BrowserWindow.getAllWindows().find(window=>window.webContents.getURL().includes('index.html')).setSize(...size),originalSize);
     await trap.fill('Swift Run');await desk.getByRole('option',{name:'Swift Runner',exact:true}).click();
-    await expect(desk.locator('[name=time-1]')).toHaveValue('16.78');
+    await expect(desk.locator('[name=time-1]')).toHaveValue('16.78');await expect(desk.locator('[name=split-1]')).toHaveValue('7.22');
     const day=await desk.locator('#meeting-date').inputValue();
     await desk.locator('#meeting-date').fill('2026-09-01');await desk.locator('#meeting-date').dispatchEvent('change');
     await expect(desk.locator('#race-registration-form')).toHaveCount(0);
@@ -60,11 +108,13 @@ async function run() {
     assert.equal(state.meeting.registration.people.length,1);
     await desk.reload();await desk.locator('[data-page=registration]').click();await desk.locator('[data-reg-tab=races]').click();
     await expect(desk.locator('[name=time-1]')).toHaveValue('16.78');
-    await desk.locator('[name=finish-1]').selectOption('DNF');await expect(desk.locator('[name=time-1]')).toHaveValue('');
+    await desk.getByRole('combobox',{name:'Status for trap 1',exact:true}).click();
+    await desk.getByRole('option',{name:'Did not finish',exact:true}).click();await expect(desk.locator('[name=time-1]')).toHaveValue('');
+    await expect(desk.locator('[data-entry-order="1"]')).toHaveText('-');
     await desk.locator('[data-reg-save]').click();
     await expect(desk.locator('#registration-status')).toHaveText('All changes saved');
     await desk.getByRole('combobox',{name:'Dog in trap 1',exact:true}).fill('Fleet');await desk.getByRole('option',{name:'Fleet Father',exact:true}).click();
-    await expect(desk.locator('[name=finish-1]')).toHaveValue('');await expect(desk.locator('[name=finalSplit-1]')).toHaveValue('');
+    await expect(desk.locator('[name=status-1]')).toHaveValue('ENTERED');await expect(desk.locator('[name=split-1]')).toHaveValue('');
     await desk.locator('[data-reg-save]').click();
     await expect(desk.locator('#registration-status')).toHaveText('All changes saved');
     await desk.getByRole('combobox',{name:'Dog in trap 1',exact:true}).fill('');
@@ -80,6 +130,7 @@ async function run() {
   } catch(error) {
     console.error(error);
     const desk=app.windows().find(page=>page.url().includes('index.html'));
+    if(desk)console.error(await desk.evaluate(()=>[...document.querySelectorAll('body *')].filter(element=>element.getClientRects().length&&element.getBoundingClientRect().right>innerWidth).slice(0,18).map(element=>({tag:element.tagName,className:element.className,right:Math.round(element.getBoundingClientRect().right),width:Math.round(element.getBoundingClientRect().width),parent:element.parentElement.className,overflow:getComputedStyle(element.parentElement).overflowX,viewport:innerWidth}))));
     if(desk){await fs.mkdir(path.resolve(__dirname,'../test-results'),{recursive:true});await desk.screenshot({path:path.resolve(__dirname,'../test-results/registration-failure.png'),fullPage:true}).catch(()=>{});}
     throw error;
   } finally {

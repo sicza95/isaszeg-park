@@ -32,7 +32,7 @@ export function nextItem(queue, current, direction = 1) {
 export function commandForKey(event) {
   if (event.ctrlKey || event.metaKey || event.altKey || event.repeat) return null;
   if (event.target?.matches?.('input, textarea, select, [contenteditable="true"]')) return null;
-  if (event.key === 'Enter' && event.target?.matches?.('button, a, [role="button"]')) return null;
+  if (['Enter',' '].includes(event.key) && event.target?.matches?.('button, a, [role="button"], [role="combobox"], [role="option"]')) return null;
   const commands = {
     ' ': { type: 'toggle' }, ArrowLeft: { type: 'seek', delta: -5 }, ArrowRight: { type: 'seek', delta: 5 },
     n: { type: 'next' }, p: { type: 'previous' }, r: { type: 'latest' }, b: { type: 'holding' },

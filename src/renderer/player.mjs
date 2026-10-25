@@ -2,18 +2,19 @@ import { makePlaylist, nextItem, holdingItem, RATES } from '../shared/playlist.m
 import { linkedRace, replayTitle, racecardSeconds, racecardDuration, reverseRacecardTime, RACECARD_TRANSITION_SECONDS } from '../shared/race-links.mjs';
 import { racePresentation } from './race-presentation.mjs';
 import { ReversePlayback } from './reverse-playback.mjs';
+import { raceResults, RESULTS_EXIT_SECONDS } from '../shared/race-results.mjs';
 
 export class StageView {
   constructor(stage) {
     this.stage = stage; this.video = stage.querySelector('video'); this.image = stage.querySelector('img'); this.label = stage.querySelector('.stage-race-label'); this.rail = stage.querySelector('.stage-rail'); this.black = stage.querySelector('.stage-blackout'); this.signature = null;
-    this.racePanel = document.createElement('section'); this.racePanel.className = 'race-broadcast'; this.racePanel.hidden = true; this.racePanel.setAttribute('aria-label','Race card and replay details'); stage.append(this.racePanel);
-    this.cardFrame = null;
+    this.racePanel = document.createElement('section'); this.racePanel.className = 'race-broadcast'; this.racePanel.hidden = true; this.racePanel.setAttribute('aria-label','Race card, replay details and results'); stage.append(this.racePanel);
+    this.cardFrame = null; this.resultsFrame = null;
     this.reverse = new ReversePlayback(this.video);
     this.video.addEventListener('loadedmetadata', () => this.drawRacecard(performance.now()));
   }
   show(item, meeting, status = {}) {
     const video = item.mediaType === 'video';
-    const race = linkedRace(meeting, item), card = status.phase === 'racecard' && Boolean(race);
+    const race = linkedRace(meeting, item), card = status.phase === 'racecard' && Boolean(race), results = status.phase === 'results' && Boolean(race);
     const signature = `${item.id}:${item.url}`;
     const changed = this.signature !== signature;
     if (changed) {
@@ -28,11 +29,17 @@ export class StageView {
     this.stage.classList.toggle('video-mode', video);
     this.stage.classList.toggle('linked-race', video && Boolean(race));
     this.stage.classList.toggle('racecard-mode', card);
-    this.stage.classList.toggle('replay-mode', video && Boolean(race) && !card);
+    this.stage.classList.toggle('replay-mode', video && Boolean(race) && !card && !results);
+    this.stage.classList.toggle('results-mode', results);
     this.racePanel.hidden = !video || !race;
     if (video && race) {
       const content = JSON.stringify([meeting.date, meeting.registration.title, meeting.registration.track, race, meeting.registration.dogs]);
-      if (content !== this.raceContent) { this.raceContent = content; this.racePanel.innerHTML = racePresentation(meeting, race); }
+      if (content !== this.raceContent) {
+        this.raceContent = content; this.racePanel.innerHTML = racePresentation(meeting, race);
+        // Assign through CSSOM: the app's CSP deliberately rejects inline styles.
+        for (const row of this.racePanel.querySelectorAll('[data-result-delay]')) row.style.setProperty('--result-delay', `${row.dataset.resultDelay}s`);
+        for (const row of this.racePanel.querySelectorAll('[data-card-delay]')) row.style.setProperty('--card-delay', `${row.dataset.cardDelay}s`);
+      }
       this.cardClock = card ? { meeting, position: status.position || 0, paused: status.paused, at: performance.now() } : null;
       if (card) {
         this.video.muted = true;
@@ -40,8 +47,15 @@ export class StageView {
         this.drawRacecard(performance.now());
         if (this.cardFrame === null) this.cardFrame = requestAnimationFrame(now => this.animateRacecard(now));
       }
+      if (results) {
+        this.resultsClock = { timeline: raceResults(race), position: status.position || 0, paused: status.paused, at: performance.now() };
+        this.video.pause();
+        this.drawResults(performance.now());
+        if (this.resultsFrame === null) this.resultsFrame = requestAnimationFrame(now => this.animateResults(now));
+      }
     }
     if (!card) this.stopRacecard();
+    if (!results) this.stopResults();
     this.black.hidden = !status.blackout;
     this.label.hidden = item.kind !== 'race' || Boolean(race);
     this.label.querySelector('strong').textContent = replayTitle(meeting,item);
@@ -63,6 +77,8 @@ export class StageView {
     const progress = Math.max(0, Math.min(1, (elapsed-racecardSeconds(meeting))/RACECARD_TRANSITION_SECONDS));
     const eased = progress * progress * (3-2*progress);
     this.stage.style.setProperty('--racecard-exit', String(eased));
+    this.stage.style.setProperty('--racecard-clock', `${elapsed}s`);
+    this.stage.style.setProperty('--racecard-progress', String(Math.max(0,Math.min(1,elapsed/racecardSeconds(meeting)))));
     this.stage.classList.toggle('racecard-exit', elapsed >= racecardSeconds(meeting));
     this.racePanel.querySelector('.racecard-countdown strong').textContent = `${Math.max(0,Math.ceil(racecardSeconds(meeting)-elapsed))} s`;
     this.racePanel.querySelector('.racecard-countdown-label').textContent = progress > 0 ? 'STARTING REPLAY' : 'REPLAY STARTS IN';
@@ -80,16 +96,43 @@ export class StageView {
     this.cardFrame = null; this.reverse.reset();
     this.stage.classList.remove('racecard-exit');
     this.stage.style.removeProperty('--racecard-exit');
+    this.stage.style.removeProperty('--racecard-progress');
+    this.stage.style.removeProperty('--racecard-clock');
+  }
+  drawResults(now) {
+    if (!this.resultsClock) return;
+    const { timeline, position, paused, at } = this.resultsClock;
+    const elapsed = Math.min(timeline.duration, position + (paused ? 0 : Math.max(0,now-at)/1000));
+    const exit = Math.max(0,Math.min(1,(elapsed-timeline.exitAt)/RESULTS_EXIT_SECONDS));
+    this.stage.style.setProperty('--results-clock', `${elapsed}s`);
+    this.stage.style.setProperty('--results-enter', String(Math.min(1,elapsed/.8)));
+    this.stage.style.setProperty('--results-exit', String(exit*exit*(3-2*exit)));
+    this.stage.style.setProperty('--results-hold', String(Math.max(0,Math.min(1,(elapsed-timeline.completeAt)/5))));
+    this.stage.classList.toggle('results-complete', elapsed >= timeline.completeAt);
+  }
+  animateResults(now) {
+    this.resultsFrame = null;
+    if (!this.resultsClock) return;
+    this.drawResults(now);
+    this.resultsFrame = requestAnimationFrame(time => this.animateResults(time));
+  }
+  stopResults() {
+    this.resultsClock = null;
+    if (this.resultsFrame !== null) cancelAnimationFrame(this.resultsFrame);
+    this.resultsFrame = null;
+    this.stage.classList.remove('results-complete');
+    for (const property of ['--results-clock','--results-enter','--results-exit','--results-hold']) this.stage.style.removeProperty(property);
   }
   mirror(item, meeting, status) {
     this.show(item, meeting, status);
     if (item.mediaType === 'video') {
       this.video.muted = true; this.video.playbackRate = status.rate;
-      if (status.phase !== 'racecard' && Number.isFinite(status.position) && Number.isFinite(this.video.duration) && Math.abs(this.video.currentTime - status.position) > 0.8) this.video.currentTime = status.position;
-      if (status.paused || status.phase === 'racecard') this.video.pause(); else this.video.play().catch(() => {});
+      const position = status.phase === 'results' ? status.mediaPosition : status.position;
+      if (status.phase !== 'racecard' && Number.isFinite(position) && Number.isFinite(this.video.duration) && Math.abs(this.video.currentTime - position) > 0.8) this.video.currentTime = Math.min(position,Math.max(0,this.video.duration-.04));
+      if (status.paused || status.phase !== 'media') this.video.pause(); else this.video.play().catch(() => {});
     }
   }
-  destroy() { this.stopRacecard(); this.reverse.destroy(); this.video.pause(); }
+  destroy() { this.stopRacecard(); this.stopResults(); this.reverse.destroy(); this.video.pause(); }
 }
 export class Player {
   constructor(stage, report = () => {}, view = null) {
@@ -97,8 +140,8 @@ export class Player {
     this.item = null; this.meeting = null; this.queue = []; this.failed = new Set();
     this.paused = false; this.blackout = false; this.mode = 'loop'; this.rate = 1; this.position = 0; this.last = performance.now();
     this.error = null; this.pendingError = null; this.phase = 'media';
-    this.view.video.addEventListener('ended', () => { if(this.phase === 'media') this.advance(); });
-    this.view.video.addEventListener('loadedmetadata', () => { this.view.video.playbackRate = this.rate; if (!this.paused && this.phase === 'media') this.view.video.play().catch(e => this.onPlayError(e)); });
+    this.view.video.addEventListener('ended', () => { if(this.phase === 'media') this.finishMedia(); });
+    this.view.video.addEventListener('loadedmetadata', () => { this.view.video.playbackRate = this.rate; if(this.phase==='results')this.seekResultsFrame(); if (!this.paused && this.phase === 'media') this.view.video.play().catch(e => this.onPlayError(e)); });
     this.view.video.addEventListener('error', () => { if (this.item?.mediaType === 'video' && this.view.video.getAttribute('src')) this.mediaError('Cannot play this recording. Check its codec (H.264 MP4 is recommended).'); });
     this.view.image.addEventListener('error', () => { if (this.item?.mediaType !== 'video' && this.view.image.getAttribute('src')) this.mediaError('This banner image is missing or unreadable.'); });
     this.timer = setInterval(() => this.tick(), 50);
@@ -108,7 +151,7 @@ export class Player {
     const changedDefault = this.meeting?.settings.defaultRate !== meeting.settings.defaultRate;
     this.meeting = meeting; this.queue = makePlaylist(meeting);
     if (changedDefault) this.rate = RATES.includes(meeting.settings.defaultRate) ? meeting.settings.defaultRate : 1;
-    this.view.video.muted = this.phase === 'racecard' || meeting.settings.muted;
+    this.view.video.muted = this.phase !== 'media' || meeting.settings.muted;
     this.view.video.playbackRate = this.rate;
     if (changedDay) { this.failed.clear(); const first = this.available()[0]; this.mode = first ? 'loop' : 'holding'; this.paused = false; this.blackout = false; this.load(first || this.holding()); }
     else {
@@ -123,6 +166,7 @@ export class Player {
       }
       if (this.item) this.view.show(this.item, meeting, this.status());
       if (this.phase === 'racecard' && !linkedRace(meeting,this.item)) this.startMedia();
+      if (this.phase === 'results' && !raceResults(linkedRace(meeting,this.item)).hasTimes) this.advance();
     }
     this.emit();
   }
@@ -135,19 +179,41 @@ export class Player {
     this.view.video.pause();
     if (item.mediaType === 'video' && this.view.signature === `${item.id}:${item.url}` && Number.isFinite(this.view.video.duration)) this.view.video.currentTime = 0;
     this.view.show(item, this.meeting, this.status());
-    this.view.video.muted = this.phase === 'racecard' || this.meeting.settings.muted;
+    this.view.video.muted = this.phase !== 'media' || this.meeting.settings.muted;
     this.view.video.playbackRate = this.rate;
     if (item.mediaType === 'video' && !this.paused && this.phase === 'media') this.view.video.play().catch(e => this.onPlayError(e));
     this.emit();
   }
-  startMedia() {
-    if (this.phase !== 'racecard') return;
+  startMedia(jump = false) {
+    if (this.phase !== 'racecard' && !jump) return;
     this.phase = 'media'; this.position = 0; this.last = performance.now();
     this.view.video.currentTime = 0;
     this.view.show(this.item,this.meeting,this.status());
     this.view.video.muted = this.meeting.settings.muted;
     if (!this.paused) this.view.video.play().catch(e=>this.onPlayError(e));
     this.emit();
+  }
+  finishMedia() {
+    if (!raceResults(linkedRace(this.meeting,this.item)).hasTimes || this.pendingError) { this.advance(); return; }
+    this.phase = 'results'; this.position = 0; this.last = performance.now();
+    this.view.video.pause(); this.view.video.muted = true;
+    this.view.show(this.item,this.meeting,this.status());
+    this.emit();
+  }
+  seekResultsFrame() {
+    if(Number.isFinite(this.view.video.duration))this.view.video.currentTime=Math.max(0,this.view.video.duration-.04);
+  }
+  jumpTo(phase) {
+    if(this.item?.mediaType!=='video'||!linkedRace(this.meeting,this.item))return;
+    if(phase==='results'&&!raceResults(linkedRace(this.meeting,this.item)).hasTimes)return;
+    this.view.stopRacecard?.();this.view.stopResults?.();
+    clearTimeout(this.pendingError);this.pendingError=null;this.error=null;
+    this.view.video.pause();
+    if(phase==='media'){this.startMedia(true);return;}
+    this.phase=phase;this.position=0;this.last=performance.now();
+    this.view.video.muted=true;
+    if(phase==='results')this.seekResultsFrame();
+    this.view.show(this.item,this.meeting,this.status());this.emit();
   }
   skipRacecard() {
     if (this.phase !== 'racecard' || this.position >= racecardSeconds(this.meeting)) return;
@@ -165,10 +231,11 @@ export class Player {
   }
   advance(direction = 1) { this.mode = 'loop'; const queue = this.available(); const next = nextItem(queue, this.item, direction); if (next) this.load(next); else { this.mode = 'holding'; this.load(this.holding()); } }
   status() {
-    const video = this.item?.mediaType === 'video' && this.phase !== 'racecard';
+    const video = this.item?.mediaType === 'video' && this.phase === 'media';
     return {
       id: this.item?.id, title: replayTitle(this.meeting,this.item), position: video ? this.view.video.currentTime : this.position,
-      duration: this.phase === 'racecard' ? racecardDuration(this.meeting) : video ? (Number.isFinite(this.view.video.duration) ? this.view.video.duration : 0) : (this.item?.seconds || 12),
+      duration: this.phase === 'racecard' ? racecardDuration(this.meeting) : this.phase === 'results' ? raceResults(linkedRace(this.meeting,this.item)).duration : video ? (Number.isFinite(this.view.video.duration) ? this.view.video.duration : 0) : (this.item?.seconds || 12),
+      mediaPosition: this.item?.mediaType === 'video' ? this.view.video.currentTime : 0,
       phase: this.phase, raceId: linkedRace(this.meeting,this.item)?.id || null,
       transitioning: this.phase === 'racecard' && this.position >= racecardSeconds(this.meeting),
       paused: this.paused, rate: this.rate, mode: this.mode, blackout: this.blackout, error: this.error,
@@ -183,6 +250,9 @@ export class Player {
     if (!this.paused && this.phase === 'racecard' && !this.pendingError) {
       this.position += delta;
       if (this.position >= racecardDuration(this.meeting)) this.startMedia();
+    } else if (!this.paused && this.phase === 'results' && !this.pendingError) {
+      this.position += delta;
+      if (this.position >= raceResults(linkedRace(this.meeting,this.item)).duration) this.advance();
     } else if (!this.paused && this.item.mediaType !== 'video' && !this.pendingError) {
       this.position += delta;
       if (this.mode !== 'holding' && this.position >= (this.item.seconds || 12)) this.advance();
@@ -196,6 +266,9 @@ export class Player {
     switch (command.type) {
       case 'toggle': this.paused = !this.paused; if (this.item?.mediaType === 'video' && this.phase === 'media') { if (this.paused) video.pause(); else video.play().catch(e => this.onPlayError(e)); } break;
       case 'skip-racecard': this.skipRacecard(); break;
+      case 'jump-racecard': this.jumpTo('racecard'); break;
+      case 'jump-replay': this.jumpTo('media'); break;
+      case 'jump-results': this.jumpTo('results'); break;
       case 'rate': if (RATES.includes(command.rate)) { this.rate = command.rate; video.playbackRate = this.rate; } break;
       case 'cycle-rate': this.rate = RATES[(RATES.indexOf(this.rate) + 1) % RATES.length]; video.playbackRate = this.rate; break;
       case 'seek': if (this.phase === 'media' && this.item?.mediaType === 'video' && Number.isFinite(command.delta) && Number.isFinite(video.duration)) video.currentTime = Math.max(0, Math.min(video.duration - .02, video.currentTime + Math.max(-30, Math.min(30, command.delta)))); break;

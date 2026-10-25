@@ -12,7 +12,8 @@ test('scraped programme preserves trap assignments, missing race 13, unknown ped
   assert.equal(data.races.length,14);assert.equal(data.dogs.length,75);
   assert.deepEqual(data.races.map(r=>r.number),[1,2,3,4,5,6,7,8,9,10,11,12,14,15]);
   assert.equal(data.races[0].entries.find(e=>e.trap===5).dogId,'6413');
-  assert.equal(data.races[2].entries.find(e=>e.trap===6).finish,'NR');
+  assert.equal(data.races[2].entries.find(e=>e.trap===6).status,'NR');
+  assert.equal(data.races[2].entries.find(e=>e.trap===6).finish,'');
   assert.equal(data.races[2].entries.find(e=>e.trap===6).time,'');
   const bolt=data.dogs.find(d=>d.id==='5784');assert.equal(bolt.sire,'Rallying Best');assert.equal(bolt.birth,'2024-06');
   const bugatti=data.dogs.find(d=>d.id==='6856');assert.equal(bugatti.sire,'');assert.equal(bugatti.birth,'2023-10');
@@ -25,6 +26,15 @@ test('duplicate races, traps, dogs and invalid results cannot be saved', () => {
 });
 test('races can be registered before recordings and with empty traps',()=>{
   const data=copy();data.races[0].entries=[];assert.equal(validateRegistration(data).races[0].entries.length,0);
+});
+
+test('saving recalculates finish order from times and keeps status separate',()=>{
+  const data=copy(),entries=data.races[0].entries;
+  entries[0].time='40.00';entries[0].finish='1';
+  const clean=validateRegistration(data).races[0].entries;
+  assert.equal(clean.find(entry=>entry.trap===entries[0].trap).finish,'6');
+  assert.ok(clean.every(entry=>entry.status==='FIN'));
+  const invalid=copy();invalid.races[0].entries[0].status='UNKNOWN';assert.throws(()=>validateRegistration(invalid),/status/);
 });
 test('race cards remain separate by date while the global registry survives reopening and imports',async t=>{
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'registration-test-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));
