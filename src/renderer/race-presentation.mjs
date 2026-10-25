@@ -37,12 +37,13 @@ export function racePresentation(meeting, race) {
     const dog = registration.dogs.find(value=>value.id===entry?.dogId);
     const badge = trapBadge(trap,true);
     const delay = .15+index*.36;
-    if (!dog) return `<article class="broadcast-entry empty-trap" data-card-delay="${delay}">${badge}<div class="broadcast-dog"><strong>Empty trap</strong></div></article>`;
-    const details = [dog.preference && `Run ${dog.preference}`, entry.weight && `${entry.weight} kg`, places.has(trap) && `Finish ${places.get(trap)}`, entry.time && `${entry.time} s`, entry.estimatedTime && entry.estimatedTime !== entry.time && `Est. ${entry.estimatedTime} s`, entry.split && `Split ${entry.split} s`, entry.finalSplit && `Final split ${entry.finalSplit} s`, entry.going && `Going ${entry.going}`].filter(Boolean);
+    if (!dog) return `<article class="broadcast-entry broadcast-inactive empty-trap" data-trap="${trap}" data-card-delay="${delay}">${badge}<div class="broadcast-dog"><strong>Empty trap</strong></div></article>`;
+    const status=entryStatus(entry),inactive=['NR','DQ'].includes(status);
+    const details = [inactive && statusChip(status), dog.preference && e(`Run ${dog.preference}`), entry.weight && e(`${entry.weight} kg`), places.has(trap) && e(`Finish ${places.get(trap)}`), !inactive && entry.time && e(`${entry.time} s`), !inactive && entry.estimatedTime && entry.estimatedTime !== entry.time && e(`Est. ${entry.estimatedTime} s`), !inactive && entry.split && e(`Split ${entry.split} s`), !inactive && entry.finalSplit && e(`Final split ${entry.finalSplit} s`), entry.going && e(`Going ${entry.going}`)].filter(Boolean);
     const people = dog.owner === dog.trainer ? dog.owner : [dog.owner,dog.trainer].filter(Boolean).join(' / ');
-    return `<article class="broadcast-entry" data-card-delay="${delay}">${badge}<div class="broadcast-dog"><div class="broadcast-dog-name">${flag(dog.country)}<strong>${e(dog.name)}</strong></div>${people?`<div class="broadcast-people">${e(people)}</div>`:''}<div class="broadcast-results">${details.map(value=>`<span>${e(value)}</span>`).join('')}</div>${entry.remarks?`<div class="broadcast-remarks">${e(entry.remarks)}</div>`:''}</div></article>`;
+    return `<article class="broadcast-entry${inactive?' broadcast-inactive':''}" data-trap="${trap}" data-card-delay="${delay}">${badge}<div class="broadcast-dog"><div class="broadcast-dog-name">${flag(dog.country)}<strong>${e(dog.name)}</strong></div>${people?`<div class="broadcast-people">${e(people)}</div>`:''}<div class="broadcast-results">${details.map(value=>`<span>${value}</span>`).join('')}</div>${entry.remarks?`<div class="broadcast-remarks">${e(entry.remarks)}</div>`:''}</div></article>`;
   }).join('');
-  const overlay = [...race.entries].sort((a,b)=>a.trap-b.trap).map((entry,index)=>{
+  const overlay = race.entries.filter(entry=>entryStatus(entry)!=='NR').sort((a,b)=>a.trap-b.trap).map((entry,index)=>{
     const dog = registration.dogs.find(value=>value.id===entry.dogId);
     if (!dog) return '';
     const people = dog.owner === dog.trainer ? dog.owner : [dog.owner,dog.trainer].filter(Boolean).join(' / ');

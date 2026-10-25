@@ -1,4 +1,4 @@
-import { entryStatus, finishingOrder, RUNNER_STATUSES, RESULT_STATUSES } from './race-results.mjs';
+import { entryStatus, finishingOrder, RUNNER_STATUSES } from './race-results.mjs';
 
 const text = (value, max = 160) => typeof value === 'string' ? value.trim().slice(0, max) : '';
 function validateRegistration(input) {
@@ -50,7 +50,6 @@ function validateRegistration(input) {
         if (value && (!Number.isFinite(Number(value)) || Number(value) <= 0)) throw new Error('Weights and times must be positive numbers.');
         result[key] = value;
       }
-      if (RESULT_STATUSES[result.status] && (result.time || result.estimatedTime)) throw new Error('Clear finish times for a non-runner, DNF or disqualification.');
       result.remarks = text(entry.remarks, 500); result.going = text(entry.going, 30);
       return result;
     });

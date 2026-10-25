@@ -23,7 +23,8 @@ async function run() {
     for(const trap of [1,2,3,4,5,6]){
       const row=desk.locator('.trap-entry').nth(trap-1);
       await expect(desk.getByRole('combobox',{name:`Status for trap ${trap}`,exact:true})).toContainText('Empty trap');
-      assert.equal(await row.evaluate(row=>[...row.querySelectorAll('input,select,button')].filter(control=>!control.closest('.entity-picker')).every(control=>control.disabled)),true,'Empty traps disable all other fields');
+      assert.equal(await row.evaluate(row=>[...row.querySelectorAll('input,select,textarea,button')].filter(control=>!control.closest('.entity-picker')&&!control.hasAttribute('data-swap-trap')).every(control=>control.disabled)),true,'Empty traps disable other fields while allowing trap swaps');
+      await expect(desk.getByRole('button',{name:`Switch trap ${trap}`,exact:true})).toBeEnabled();
       await expect(desk.getByRole('combobox',{name:`Dog in trap ${trap}`,exact:true})).toBeEnabled();
     }
     const trap=desk.getByRole('combobox',{name:'Dog in trap 1',exact:true});
@@ -38,6 +39,36 @@ async function run() {
     await trainer.fill('Ann');await expect(desk.getByRole('option',{name:'Anna Owner',exact:true})).toBeVisible();
     await desk.getByRole('option',{name:'Anna Owner',exact:true}).click();
     const sire=desk.getByRole('combobox',{name:'Sire',exact:true}),dam=desk.getByRole('combobox',{name:'Dam',exact:true});
+    await desk.evaluate(async()=>{
+      const state=await window.replay.init(),registration=state.meeting.registration;
+      await window.replay.saveRegistry({people:registration.people,dogs:[...registration.dogs,...Array.from({length:35},(_,index)=>({id:`menu-candidate-${index}`,name:`Menu candidate ${String(index).padStart(2,'0')}`,breed:'Greyhound'}))]});
+    });
+    // Parent menus must escape the scrolling modal and stay in the viewport.
+    for(const parent of [sire,dam]){
+      const before=await desk.locator('.reg-dog-dialog').evaluate(dialog=>({scrollHeight:dialog.scrollHeight,scrollTop:dialog.scrollTop}));
+      await parent.focus();
+      const menu=desk.locator('.entity-choices:popover-open');await expect(menu).toBeVisible();
+      assert.equal(await menu.evaluate(menu=>{const bounds=menu.getBoundingClientRect();return bounds.left>=0&&bounds.right<=innerWidth&&bounds.top>=0&&bounds.bottom<=innerHeight;}),true,'Parent menu stays inside the viewport');
+      assert.equal(await desk.locator('.reg-dog-dialog').evaluate(dialog=>dialog.scrollHeight),before.scrollHeight,'Opening a parent menu does not grow the modal');
+      await parent.press('Escape');await expect(menu).toHaveCount(0);
+      await parent.click();await expect(menu).toHaveCount(1);await parent.press('Escape');
+    }
+    const dialogSize=await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(window=>window.webContents.getURL().includes('index.html')).getSize());
+    let flipped=false;
+    for(const [width,height] of [[1040,980],[620,700],[375,700]]){
+      await app.evaluate(({BrowserWindow},[width,height])=>{const window=BrowserWindow.getAllWindows().find(window=>window.webContents.getURL().includes('index.html'));window.setMinimumSize(320,640);window.setSize(width,height);},[width,height]);
+      await sire.fill('');await sire.click();
+      const menu=desk.locator('.entity-choices:popover-open');await expect(menu).toBeVisible();
+      const scrollHeight=await desk.locator('.reg-dog-dialog').evaluate(dialog=>dialog.scrollHeight);
+      for(let index=0;index<28;index++)await sire.press('ArrowDown');
+      assert.equal(await desk.locator('.reg-dog-dialog').evaluate(dialog=>dialog.scrollHeight),scrollHeight,'Navigating a long menu does not grow the modal');
+      assert.equal(await menu.evaluate(menu=>{const bounds=menu.getBoundingClientRect();const hit=document.elementFromPoint(bounds.left+bounds.width/2,bounds.top+bounds.height/2);return bounds.left>=0&&bounds.right<=innerWidth&&bounds.top>=0&&bounds.bottom<=innerHeight&&Boolean(hit?.closest('.entity-choices'));}),true,'Long parent menu stays on top and within viewport edges');
+      flipped ||= await menu.getAttribute('data-align')==='above';
+      await desk.screenshot({path:path.resolve(__dirname,`../test-results/parent-menu-${width}.png`)});
+      await sire.press('Escape');
+    }
+    assert.equal(flipped,true,'Parent menus open upwards when the lower viewport edge is close');
+    await app.evaluate(({BrowserWindow},size)=>BrowserWindow.getAllWindows().find(window=>window.webContents.getURL().includes('index.html')).setSize(...size),dialogSize);
     await sire.fill('Fleet');await desk.getByRole('option',{name:'Fleet Father',exact:true}).click();
     await dam.fill('Swift Mother');await dam.press('Enter');
     await expect(desk.locator('.reg-dog-dialog [name=damId]')).not.toHaveValue('');
@@ -65,6 +96,45 @@ async function run() {
     await desk.locator('[name=time-2]').fill('16.50');await expect(desk.locator('[data-entry-order="2"]')).toHaveText('1');await expect(desk.locator('[data-entry-order="1"]')).toHaveText('2');
     const widths=await desk.locator('.trap-entry-main').first().evaluate(row=>[row.querySelector('.runner-status-field'),row.querySelector('[name=split-1]').parentElement,row.querySelector('[name=time-1]').parentElement].map(cell=>cell.getBoundingClientRect().width));
     assert.ok(widths.every(width=>Math.abs(width-widths[0])<1),'Status, split and time have equal width');
+    const heights=await desk.locator('.trap-entry-main').first().evaluate(row=>[row.querySelector('[data-entity-input]'),row.querySelector('.runner-status-trigger'),row.querySelector('[name=split-1]'),row.querySelector('[name=time-1]')].map(input=>input.getBoundingClientRect().height));
+    assert.ok(heights.every(height=>Math.abs(height-heights[0])<1),'Dog, status, split and time have equal height');
+    const details=desk.getByRole('button',{name:'Weigh-in & additional results for trap 1',exact:true});
+    await details.click();await desk.locator('[name=weight-1]').fill('31.2');await desk.locator('[name=estimatedTime-1]').fill('16.90');
+    const remarks=desk.locator('textarea[name=remarks-1]');await remarks.fill('Ran wide\nStrong finish');
+    assert.equal(await remarks.evaluate(input=>input.getBoundingClientRect().width>input.closest('.entry-result-fields').clientWidth*.9),true,'Remarks span the available row width');
+    await desk.locator('.trap-entry').first().screenshot({path:path.resolve(__dirname,'../test-results/registration-expanded.png')});
+    await desk.getByRole('button',{name:'Switch trap 1',exact:true}).click();
+    await expect(desk.locator('.swap-source')).toHaveAttribute('aria-disabled','true');
+    await expect(desk.getByRole('button',{name:'Swap trap 1 with trap 2',exact:true})).toBeVisible();
+    assert.equal(await desk.locator('.swap-target').first().evaluate(row=>[...row.children].every(child=>child.inert)),true,'Target row controls are inert during selection');
+    await desk.keyboard.press('Escape');await expect(desk.locator('.swap-source,.swap-target')).toHaveCount(0);
+    await desk.getByRole('button',{name:'Switch trap 1',exact:true}).click();
+    await desk.getByRole('button',{name:'Swap trap 1 with trap 2',exact:true}).click();
+    await expect(desk.locator('.swap-initiator')).toHaveAttribute('data-trap','2');
+    assert.equal(await desk.locator('.swap-initiator').evaluate(row=>Number(getComputedStyle(row).zIndex)>Number(getComputedStyle(document.querySelector('.swap-receiver')).zIndex)),true,'The initiating row moves above its target');
+    await desk.evaluate(()=>document.querySelectorAll('.trap-entry').forEach(row=>row.getAnimations({subtree:true}).forEach(animation=>{animation.pause();animation.currentTime=340;})));
+    assert.equal(await desk.locator('.swap-initiator').evaluate(row=>new DOMMatrix(getComputedStyle(row).transform).a>1),true,'The initiating row rises towards the viewer');
+    assert.equal(await desk.locator('.swap-receiver').evaluate(row=>new DOMMatrix(getComputedStyle(row).transform).a<1),true,'The target row recedes behind it');
+    await desk.locator('.trap-entries').screenshot({path:path.resolve(__dirname,'../test-results/trap-swap-midpoint.png')});
+    await desk.evaluate(()=>document.querySelectorAll('.trap-entry').forEach(row=>row.getAnimations({subtree:true}).forEach(animation=>animation.play())));
+    await expect(desk.locator('.swap-initiator,.swap-receiver')).toHaveCount(0);
+    await expect(desk.getByRole('combobox',{name:'Dog in trap 2',exact:true})).toHaveValue('Swift Runner');
+    await expect(desk.getByRole('button',{name:'Weigh-in & additional results for trap 2',exact:true})).toHaveAttribute('aria-expanded','true');
+    await expect(desk.locator('[name=time-2]')).toHaveValue('16.78');await expect(desk.locator('[name=weight-2]')).toHaveValue('31.2');
+    await expect(desk.locator('[name=remarks-2]')).toHaveValue('Ran wide\nStrong finish');
+    await expect(desk.locator('[data-entry-order="2"]')).toHaveText('2');
+    await desk.getByRole('button',{name:'Switch trap 2',exact:true}).click();
+    await desk.getByRole('button',{name:'Swap trap 2 with trap 1',exact:true}).press('Enter');
+    await expect(desk.locator('.swap-initiator,.swap-receiver')).toHaveCount(0);
+    await expect(trap).toHaveValue('Swift Runner');await expect(desk.locator('[name=time-1]')).toHaveValue('16.78');
+    // Empty traps are also valid destinations, and reduced motion keeps the same result.
+    await desk.emulateMedia({reducedMotion:'reduce'});
+    await desk.getByRole('button',{name:'Switch trap 1',exact:true}).click();await desk.getByRole('button',{name:'Swap trap 1 with trap 6',exact:true}).click();
+    await expect(desk.locator('.swap-initiator,.swap-receiver')).toHaveCount(0);
+    await expect(desk.getByRole('combobox',{name:'Dog in trap 6',exact:true})).toHaveValue('Swift Runner');await expect(trap).toHaveValue('');
+    await desk.getByRole('button',{name:'Switch trap 6',exact:true}).click();await desk.getByRole('button',{name:'Swap trap 6 with trap 1',exact:true}).click();
+    await expect(desk.locator('.swap-initiator,.swap-receiver')).toHaveCount(0);
+    await desk.emulateMedia({reducedMotion:'no-preference'});
     await fs.mkdir(path.resolve(__dirname,'../test-results'),{recursive:true});
     await desk.locator('.trap-entries').screenshot({path:path.resolve(__dirname,'../test-results/registration-status-order.png')});
     await secondDog.fill('');await desk.locator('[name=time-1]').focus();
@@ -109,10 +179,13 @@ async function run() {
     await desk.reload();await desk.locator('[data-page=registration]').click();await desk.locator('[data-reg-tab=races]').click();
     await expect(desk.locator('[name=time-1]')).toHaveValue('16.78');
     await desk.getByRole('combobox',{name:'Status for trap 1',exact:true}).click();
-    await desk.getByRole('option',{name:'Did not finish',exact:true}).click();await expect(desk.locator('[name=time-1]')).toHaveValue('');
+    await desk.getByRole('option',{name:'Disqualified',exact:true}).click();await expect(desk.locator('[name=time-1]')).toHaveValue('16.78');
+    await expect(desk.locator('[name=estimatedTime-1]')).toHaveValue('16.90');await expect(desk.locator('[name=split-1]')).toHaveValue('7.22');
     await expect(desk.locator('[data-entry-order="1"]')).toHaveText('-');
     await desk.locator('[data-reg-save]').click();
     await expect(desk.locator('#registration-status')).toHaveText('All changes saved');
+    await desk.reload();await desk.locator('[data-page=registration]').click();await desk.locator('[data-reg-tab=races]').click();
+    await expect(desk.locator('[name=status-1]')).toHaveValue('DQ');await expect(desk.locator('[name=time-1]')).toHaveValue('16.78');
     await desk.getByRole('combobox',{name:'Dog in trap 1',exact:true}).fill('Fleet');await desk.getByRole('option',{name:'Fleet Father',exact:true}).click();
     await expect(desk.locator('[name=status-1]')).toHaveValue('ENTERED');await expect(desk.locator('[name=split-1]')).toHaveValue('');
     await desk.locator('[data-reg-save]').click();
@@ -126,7 +199,7 @@ async function run() {
     await fs.mkdir(path.resolve(__dirname,'../test-results'),{recursive:true});
     await desk.screenshot({path:path.resolve(__dirname,'../test-results/global-registration.png'),fullPage:true});
     assert.deepEqual(errors,[]);
-    console.log('Registration smoke passed: global dogs and people, optional owner, inline search/create and pedigree links, edit dialog, preserved drafts, visible results, status clearing, rename and restart.');
+    console.log('Registration smoke passed: registry, top-layer parent menus, equal input heights, wide remarks, animated and keyboard trap swaps, empty destinations, retained disqualified times, drafts and restart.');
   } catch(error) {
     console.error(error);
     const desk=app.windows().find(page=>page.url().includes('index.html'));

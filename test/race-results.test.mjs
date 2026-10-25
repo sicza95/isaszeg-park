@@ -68,3 +68,14 @@ test('split column uses split times, leaves missing values blank, and never subs
   assert.match(html,/class="result-split">—</);
   assert.ok(!presentation([runner(1,'1','29.00',{finalSplit:'22.78'})]).includes('has-splits'));
 });
+
+test('inactive race-card rows are greyed and retained disqualified times stay out of results',()=>{
+  const entries=[runner(1,'','29.00',{status:'FIN'}),runner(2,'','28.10',{status:'DQ',estimatedTime:'28.20',split:'6.10',finalSplit:'22.00'}),runner(3,'','',{status:'NR'})];
+  const meeting={date:'2026-10-25',registration:{title:'Derby',track:'Isaszeg',dogs:entries.map(entry=>({id:entry.dogId,name:`Dog ${entry.trap}`}))}};
+  const html=racePresentation(meeting,race(entries));
+  for(const trap of [2,3,4,5,6])assert.match(html,new RegExp(`broadcast-entry broadcast-inactive[^\"]*\" data-trap=\"${trap}\"`));
+  assert.match(html,/broadcast-entry\" data-trap=\"1\"/);
+  for(const value of ['28.10','28.20','6.10','22.00'])assert.ok(!html.includes(value),`Inactive runner time ${value} stays private`);
+  assert.match(presentation(entries),/Disqualified/);
+  assert.equal(entries[1].time,'28.10');
+});

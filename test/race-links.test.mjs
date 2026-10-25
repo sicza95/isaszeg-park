@@ -45,6 +45,23 @@ test('racecard escapes saved text and includes entries, conditions and results',
   for(const text of ['REPLAY','31.5 kg','Finish 1','16.20 s','Split 3.4 s','Clear run','Empty trap','broadcast-origin']) assert.ok(!overlay.includes(text),text);
 });
 
+test('video overlays omit non-runners while retaining their race-card and result rows',()=>{
+  const entries=[{trap:1,dogId:'withdrawn',status:'NR'},{trap:2,dogId:'finisher',status:'FIN',time:'16.20'},{trap:3,dogId:'legacy',finish:'NR'},{trap:4,dogId:'disqualified',status:'DQ'},{trap:5,dogId:'unfinished',status:'DNF'}];
+  const race={number:1,title:'Final',grade:'S3',distance:275,type:'Oval',breed:'Greyhound',entries};
+  const meeting={date:'2026-10-25',registration:{title:'Derby',track:'Isaszeg Park',dogs:entries.map(entry=>({id:entry.dogId,name:entry.dogId}))}};
+  const html=racePresentation(meeting,race),start=html.indexOf('<div class="replay-details"'),end=html.indexOf('<div class="results-card');
+  const overlay=html.slice(start,end);
+  for(const name of ['withdrawn','legacy']){
+    assert.ok(!overlay.includes(name));
+    assert.ok(html.slice(0,start).includes(name),'Non-runners remain on the opening card');
+    assert.ok(html.slice(end).includes(name),'Non-runners retain their result status');
+  }
+  for(const name of ['finisher','disqualified','unfinished'])assert.ok(overlay.includes(name));
+  assert.equal((overlay.match(/class="replay-entry /g)||[]).length,3);
+  assert.match(overlay,/replay-entry-0.*broadcast-trap-2/);
+  assert.match(overlay,/replay-entry-1.*broadcast-trap-4/);
+});
+
 test('reverse prelude covers reading time plus the final second, including short clips', () => {
   const meeting={settings:{racecardSeconds:10}};
   assert.equal(racecardDuration(meeting),11);

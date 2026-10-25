@@ -180,10 +180,26 @@ async function run() {
     await desk.evaluate(async()=>{
       const state=await window.replay.init(),registration=structuredClone(state.meeting.registration);
       const race=registration.races.find(race=>race.id==='source-1');
-      const results={1:['NR','',''],2:['2','16.80','6.13'],3:['DNF','',''],4:['3','17.00',''],5:['1','16.76','6.01'],6:['DQ','','']};
+      const results={1:['NR','',''],2:['2','16.80','6.13'],3:['DNF','',''],4:['3','17.00',''],5:['1','16.76','6.01'],6:['DQ','15.99','5.99']};
       for(const entry of race.entries){const [finish,time,split]=results[entry.trap];Object.assign(entry,{status:['NR','DNF','DQ'].includes(finish)?finish:'FIN',time,estimatedTime:time,split});}
       await window.replay.saveRegistration(registration);
     });
+    await desk.locator('[data-jump="racecard"]').click();await desk.locator('#play-pause').click();
+    await expect.poll(()=>audience.locator('.broadcast-entry').last().evaluate(row=>getComputedStyle(row).opacity)).toBe('1');
+    await desk.locator('#play-pause').click();
+    for(const trap of [1,6]){
+      const inactive=audience.locator(`.racecard-details .broadcast-entry[data-trap="${trap}"]`);
+      await expect(inactive).toHaveClass(/broadcast-inactive/);
+      assert.equal(await inactive.locator('.trap-badge').evaluate(badge=>getComputedStyle(badge).filter),'grayscale(1)','Inactive traps stay grey after the reveal animation');
+      assert.equal(await inactive.locator('.broadcast-dog').evaluate(dog=>getComputedStyle(dog).opacity),'0.45');
+    }
+    await expect(audience.locator('.racecard-details')).not.toContainText('15.99');
+    await audience.screenshot({path:path.join(__dirname,'../test-results/racecard-inactive.png')});
+    await desk.locator('[data-jump="replay"]').click();
+    for(const page of [audience,desk]){
+      await expect(page.locator('.replay-details .trap-1')).toHaveCount(0);
+      await expect(page.locator('.replay-details .trap-6')).toHaveCount(1);
+    }
     await audience.locator('video').evaluate(video=>{video.currentTime=video.duration-.15;});
     await desk.locator('#play-pause').click();
     await expect(audience.locator('.results-mode')).toHaveCount(1);
@@ -210,6 +226,7 @@ async function run() {
     await expect.poll(()=>audience.locator('.result-other').last().evaluate(row=>getComputedStyle(row).opacity),{intervals:[50]}).toBe('1');
     await desk.locator('#play-pause').click();
     for(const text of ['Non-runner','Did not finish','Disqualified','6.01','6.13','16.76'])await expect(audience.locator('.results-card')).toContainText(text);
+    for(const time of ['15.99','5.99'])await expect(audience.locator('.results-card')).not.toContainText(time);
     await expect(audience.locator('.replay-details')).toBeHidden();
     await expect(audience.locator('.racecard-details')).toBeHidden();
     await audience.screenshot({path:path.join(__dirname,'../test-results/race-results-complete.png')});

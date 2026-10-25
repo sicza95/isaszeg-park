@@ -20,9 +20,19 @@ test('scraped programme preserves trap assignments, missing race 13, unknown ped
   assert.equal(data.races.filter(r=>r.videoReference).length,3);
 });
 test('duplicate races, traps, dogs and invalid results cannot be saved', () => {
-  for (const mutate of [d=>d.races[1].number=1,d=>d.races[0].entries[1].trap=1,d=>d.races[0].entries[1].dogId=d.races[0].entries[0].dogId,d=>d.races[0].entries[0].dogId='missing',d=>d.races[0].entries[0].time='-1',d=>d.races[0].entries[0].finish='NR',d=>d.dogs[0].breed='Whippet']) {
+  for (const mutate of [d=>d.races[1].number=1,d=>d.races[0].entries[1].trap=1,d=>d.races[0].entries[1].dogId=d.races[0].entries[0].dogId,d=>d.races[0].entries[0].dogId='missing',d=>d.races[0].entries[0].time='-1',d=>d.races[0].entries[0].finish='UNKNOWN',d=>d.dogs[0].breed='Whippet']) {
     const data=copy();mutate(data);assert.throws(()=>validateRegistration(data));
   }
+});
+
+test('disqualified times survive saving and reopening without a finishing place',async t=>{
+  const data=copy(),entry=data.races[0].entries[0];
+  entry.status='DQ';entry.time='16.78';entry.estimatedTime='16.90';entry.split='7.22';entry.finalSplit='9.56';
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'disqualified-times-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));
+  await new MeetingStore(root).saveRegistration('2026-10-04',data);
+  const saved=(await new MeetingStore(root).load('2026-10-04')).registration.races[0].entries.find(value=>value.dogId===entry.dogId);
+  for(const key of ['time','estimatedTime','split','finalSplit','status'])assert.equal(saved[key],entry[key]);
+  assert.equal(saved.finish,'');
 });
 test('races can be registered before recordings and with empty traps',()=>{
   const data=copy();data.races[0].entries=[];assert.equal(validateRegistration(data).races[0].entries.length,0);
