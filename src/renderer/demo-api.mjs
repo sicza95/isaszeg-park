@@ -1,5 +1,6 @@
 import { validateRegistration } from '../shared/registration.mjs';
-import { bindRaceLinks, setRaceLink } from '../shared/race-links.mjs';
+import { bindRaceLinks } from '../shared/race-links.mjs';
+import { applyMediaEdit } from '../shared/media-edit.mjs';
 import { emptyRegistry, mergeRegistry, withRegistry, meetingRegistration, assertRaceBreeds } from '../shared/registry.mjs';
 const dateNow = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Budapest', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 function fresh(date) {
@@ -51,7 +52,7 @@ export function createDemoAPI() {
     saveRegistration: async input => { const next=mergeRegistry(registry,input); const data = validateRegistration(withRegistry(input,next)); checkRegistryBreeds(next,date); localStorage.setItem('isaszeg-registration-' + date, JSON.stringify(meetingRegistration(data))); saveRegistry(next,date); const meeting = meetings.get(date); bindRaceLinks(meeting); meeting.registration = structuredClone(data); bindRaceLinks(meeting); return refresh(); },
     saveRegistry: async input => { saveRegistry(input); return refresh(); },
     dates: async () => [...meetings.keys()],
-    patchItem: async (id, patch) => { const meeting = meetings.get(date), item = meeting.items.find(x => x.id === id); if (!item) throw new Error('This item no longer exists.'); if (Object.hasOwn(patch,'raceId')) setRaceLink(meeting,item,patch.raceId); Object.assign(item, patch); return refresh(); },
+    patchItem: async (id, patch) => { const meeting = meetings.get(date); applyMediaEdit(meeting,id,patch); if (patch.runnerResults) localStorage.setItem('isaszeg-registration-' + date,JSON.stringify(meetingRegistration(meeting.registration))); return refresh(); },
     removeItem: async id => {
       const meeting = meetings.get(date); const index = meeting.items.findIndex(item => item.id === id);
       if (index < 0) throw new Error('This item no longer exists.');

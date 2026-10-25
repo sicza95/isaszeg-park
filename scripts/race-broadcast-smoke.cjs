@@ -14,7 +14,7 @@ async function run() {
     await app.context().route(/^https?:/,route=>{remote.push(route.request().url());return route.abort();});
     desk.on('pageerror',error=>errors.push(error.message));
     await desk.waitForSelector('.queue-item');
-    await expect(desk.locator('.race-jumps button')).toHaveCount(3);
+    await expect(desk.locator('.race-jumps button')).toHaveCount(4);
     for(const section of ['racecard','replay','results'])await expect(desk.locator(`[data-jump="${section}"]`)).toBeVisible();
     await expect(desk.locator('[data-jump="results"]')).toBeDisabled();
     await expect.poll(()=>app.windows().some(window=>window.url().endsWith('display.html')),{timeout:15000}).toBe(true);
@@ -27,6 +27,7 @@ async function run() {
     await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});},clip);
     await desk.locator('#import-button').click();await desk.locator('#choose-files').click();await desk.locator('#confirm-import').click();
     await expect(desk.locator('#import-results')).toContainText('added to the loop');
+    await expect(desk.locator('#edit-dialog')).toBeVisible();await desk.locator('#edit-save').click();await expect(desk.locator('#edit-dialog')).toBeHidden();
     let state=await desk.evaluate(()=>window.replay.init());
     const item=state.meeting.items.find(item=>item.kind==='race'),row=desk.locator(`[data-item="${item.id}"]`);
     assert.equal(item.raceId,'source-1');

@@ -130,6 +130,11 @@ async function boot() {
   handle('registration:save', async data => { await store.saveRegistration(date, data); return refresh(); });
   handle('registry:save', async data => { await store.saveRegistry(data); return refresh(); });
   handle('item:patch', async (id, patch) => { await store.patchItem(date, id, patch || {}); return refresh(); });
+  handle('replay:rate', async edit => {
+    validDate(edit?.date);
+    await store.patchItem(edit.date,edit.id,{replayRate:{id:edit.sectionId,rate:edit.rate}});
+    if(edit.date===date)await refresh();
+  }, 'display');
   handle('item:remove', async id => { if (busy) throw new Error('Wait for the import to finish.'); await store.removeItem(date, id); return refresh(); });
   handle('items:reorder', async ids => { await store.reorder(date, ids); return refresh(); });
   handle('settings:patch', async patch => { await store.patchSettings(date, patch || {}); return refresh(); });
@@ -165,7 +170,7 @@ async function boot() {
   handle('output:show', showOutput);
   handle('output:hide', async () => { output?.hide(); outputVisible = false; return refresh(); });
   handle('transport', async command => {
-    if (!command || !['toggle', 'seek', 'scrub', 'next', 'previous', 'latest', 'holding', 'rate', 'cycle-rate', 'play', 'fullscreen', 'blackout', 'skip-racecard', 'jump-racecard', 'jump-replay', 'jump-results'].includes(command.type)) throw new Error('Unknown playback command.');
+    if (!command || !['toggle', 'seek', 'scrub', 'next', 'previous', 'latest', 'holding', 'rate', 'cycle-rate', 'play', 'fullscreen', 'blackout', 'skip-racecard', 'jump-racecard', 'jump-replay', 'jump-results', 'jump-instant-replay'].includes(command.type)) throw new Error('Unknown playback command.');
     if (command.type === 'fullscreen') { if (outputVisible) output.setFullScreen(!output.isFullScreen()); else await showOutput(selectedDisplay); return; }
     await ensureOutput(); send(output, 'command', command);
   }, 'either');

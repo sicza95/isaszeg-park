@@ -12,6 +12,22 @@ async function fixture(t) {
   const clip = async (name, content) => { const file = path.join(source, name); await fs.writeFile(file, content); return file; };
   return { dir, source, store, clip };
 }
+
+test('media edits persist replay moments and runner times atomically across restart',async t=>{
+  const {store,clip}=await fixture(t),date='2026-10-24';
+  const {referenceMeeting}=await import('../src/shared/reference-219.mjs');
+  await store.saveRegistration(date,referenceMeeting);
+  const result=await store.importFiles(date,[await clip('race.mp4','replay moments')],'race',1),item=result.results[0].item;
+  const race=referenceMeeting.races[0],entries=race.entries.map(entry=>({trap:entry.trap,status:'FIN',time:'20.12',split:'5.40'}));
+  await store.patchItem(date,item.id,{replaySections:[{id:'bend',start:1,end:3,rate:.25,label:'Bend'}],runnerResults:{raceId:race.id,entries}});
+  const reopened=await new MeetingStore(store.root).load(date);
+  assert.equal(reopened.items.find(value=>value.id===item.id).replaySections[0].rate,.25);
+  assert.equal(reopened.registration.races[0].entries[0].time,'20.12');
+  await store.patchItem(date,item.id,{replayRate:{id:'bend',rate:1}});
+  assert.equal((await new MeetingStore(store.root).load(date)).items.find(value=>value.id===item.id).replaySections[0].rate,1);
+  entries[0].time='invalid';await assert.rejects(store.patchItem(date,item.id,{title:'Invalid',replaySections:[],runnerResults:{raceId:race.id,entries}}));
+  assert.equal((await store.load(date)).items.find(value=>value.id===item.id).replaySections.length,1);
+});
 test('verified import preserves card originals, numbers clips and survives restart', async t => {
   const { store, clip } = await fixture(t);
   const original = await clip('camera.mp4', Buffer.alloc(4096, 19));

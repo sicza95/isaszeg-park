@@ -2,7 +2,7 @@ import { Player, StageView } from './player.mjs';
 import { commandForKey, holdingItem } from '../shared/playlist.mjs';
 const stage = document.querySelector('#audience');
 if (window.replay) {
-  const player = new Player(stage, state => window.replay.report(state));
+  const player = new Player(stage, state => window.replay.report(state), null, edit => window.replay.saveReplayRate(edit));
   window.replay.on('state', state => player.setMeeting(state.meeting));
   window.replay.on('command', command => player.command(command));
   const state = await window.replay.init(); player.setMeeting(state.meeting);

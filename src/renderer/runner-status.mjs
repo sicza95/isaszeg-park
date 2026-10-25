@@ -8,8 +8,8 @@ export function statusChip(status) {
 
 const triggerContent=value=>`<span class="runner-status-label">${e(RUNNER_STATUSES[value])}</span><span class="runner-status-caret" aria-hidden="true"></span>`;
 
-export function statusField(trap, entry) {
-  const value=entryStatus(entry),id=`runner-status-${trap}`;
+export function statusField(trap, entry, prefix = 'runner-status') {
+  const value=entryStatus(entry),id=`${prefix}-${trap}`;
   return `<div class="runner-status-field"><input type="hidden" name="status-${trap}" value="${value}"><button type="button" class="runner-status-trigger runner-status-${value.toLowerCase()}" role="combobox" aria-label="Status for trap ${trap}" aria-haspopup="listbox" aria-expanded="false" aria-controls="${id}" ${value==='EMPTY'?'disabled':''}>${triggerContent(value)}</button><div class="runner-status-options" id="${id}" role="listbox" aria-label="Status for trap ${trap}" hidden>${Object.entries(RUNNER_STATUSES).filter(([code])=>code!=='EMPTY').map(([code,label])=>`<button type="button" role="option" tabindex="-1" aria-selected="${code===value}" data-status-value="${code}" title="${e(label)}">${statusChip(code)}${icon('check')}</button>`).join('')}</div></div>`;
 }
 

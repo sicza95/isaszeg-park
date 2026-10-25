@@ -46,6 +46,7 @@ async function run() {
       await expect(desk.locator('#import-results')).not.toHaveText('', { timeout: 30000 });
       if (keepOpen) await expect(desk.locator('#import-dialog')).toBeVisible();
       else await expect(desk.locator('#import-dialog')).toBeHidden();
+      if(kind==='race'&&!keepOpen){await expect(desk.locator('#edit-dialog')).toBeVisible();await desk.locator('#edit-save').click();await expect(desk.locator('#edit-dialog')).toBeHidden();}
     };
     await importClip('camera-001.mp4');
     await expect(desk.locator('#import-results')).toContainText('added to the loop');

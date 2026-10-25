@@ -5,12 +5,15 @@ import { createRegistrationView } from './registration.mjs';
 import { createDemoAPI } from './demo-api.mjs';
 import { linkedRace, replayTitle } from '../shared/race-links.mjs';
 import { raceResults } from '../shared/race-results.mjs';
+import { replaySections, replayTime, replayTrackGradient } from '../shared/instant-replays.mjs';
+import { createMediaEditor } from './media-editor.mjs';
 const $ = selector => document.querySelector(selector);
 const api = window.replay || createDemoAPI(); const desktop = Boolean(window.replay);
-let state, playback, activePage = 'desk', currentDirectory = null, parentDirectory = null, selection = new Map(), editingId, importing = false, removingId, removing = false, lastError;
+let state, playback, activePage = 'desk', currentDirectory = null, parentDirectory = null, selection = new Map(), importing = false, removingId, removing = false, lastError;
 const registration = createRegistrationView({ api, toast, setState, openImport });
+const mediaEditor = createMediaEditor({api,getState:()=>state,setState,toast});
 const view = desktop ? new StageView($('#preview')) : null;
-const player = desktop ? null : new Player($('#preview'), data => api.report(data));
+const player = desktop ? null : new Player($('#preview'), data => api.report(data), null, edit => api.patchItem(edit.id,{replayRate:{id:edit.sectionId,rate:edit.rate}}));
 if (player) api.setTransport(command => player.command(command));
 let toastTimer;
 function toast(message, error = false) { const box = $('#toast'); box.textContent = message; box.classList.toggle('error', error); box.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { box.hidden = true; }, error ? 9000 : 4500); }
@@ -99,14 +102,22 @@ function updatePlayback(value) {
   const item = state.meeting.items.find(x => x.id === value.id) || (value.id === 'holding' ? holdingItem(state.meeting) : null);
   if (desktop && item) view.mirror(item, state.meeting, value);
   $('#now-title').textContent = value.title || 'Isaszeg Park';
-  $('#playing-mode').textContent = value.blackout ? 'BLACKOUT · PLAYBACK PAUSED' : value.mode === 'holding' ? 'HOLDING · PRESS N TO RESUME THE LOOP' : value.paused ? 'PAUSED' : value.transitioning ? 'STARTING REPLAY' : value.phase === 'racecard' ? 'RACE CARD · REPLAY UP NEXT' : value.phase === 'results' ? 'RACE RESULTS · FINISHING ORDER' : 'NOW PLAYING';
-  $('#media-kind').textContent = value.phase === 'racecard' ? 'RACE CARD' : value.phase === 'results' ? 'RACE RESULTS' : value.kind === 'race' ? 'RACE REPLAY' : value.kind === 'ad' ? 'SPONSOR AD' : 'HOLDING BANNER';
+  $('#playing-mode').textContent = value.blackout ? 'BLACKOUT · PLAYBACK PAUSED' : value.mode === 'holding' ? 'HOLDING · PRESS N TO RESUME THE LOOP' : value.paused ? 'PAUSED' : value.phase === 'instant-replay' ? `INSTANT REPLAY · MOMENT ${value.replayIndex+1} OF ${value.replayCount}` : value.transitioning ? 'STARTING REPLAY' : value.phase === 'racecard' ? 'RACE CARD · REPLAY UP NEXT' : value.phase === 'results' ? 'RACE RESULTS · FINISHING ORDER' : 'NOW PLAYING';
+  $('#media-kind').textContent = value.phase === 'racecard' ? 'RACE CARD' : value.phase === 'results' ? 'RACE RESULTS' : value.phase === 'instant-replay' ? 'INSTANT REPLAY' : value.kind === 'race' ? 'RACE REPLAY' : value.kind === 'ad' ? 'SPONSOR AD' : 'HOLDING BANNER';
   const race=linkedRace(state.meeting,item),linked=Boolean(race&&item?.mediaType==='video');
+  const moments = replaySections(item, ['media','instant-replay'].includes(value.phase) && value.duration ? value.duration : Infinity);
+  $('#seek').style.setProperty('--replay-track',replayTrackGradient(['media','instant-replay'].includes(value.phase) ? moments : [],value.duration));
   for(const button of document.querySelectorAll('[data-jump]')){
-    button.disabled=!linked || (button.dataset.jump==='results'&&!raceResults(race).hasTimes);
+    button.disabled=button.dataset.jump==='instant-replay' ? !moments.length : !linked || (button.dataset.jump==='results'&&!raceResults(race).hasTimes);
     button.setAttribute('aria-current',String(linked&&button.dataset.jump===(value.phase==='media'?'replay':value.phase)));
-    button.title=!linked?'Play a linked race recording to jump between its sections.':button.disabled?'No finish times recorded yet.':`Jump to ${button.textContent.trim().toLowerCase()}`;
+    button.title=button.dataset.jump==='instant-replay' ? moments.length?'Jump to instant slow-motion replays':'Mark replay moments in Edit media to enable slow-motion replays.' : !linked?'Play a linked race recording to jump between its sections.':button.disabled?'No finish times recorded yet.':`Jump to ${button.textContent.trim().toLowerCase()}`;
   }
+  const momentRow = $('#instant-replay-toggles'), signature = JSON.stringify([item?.id,moments]);
+  if (momentRow.dataset.signature !== signature) {
+    momentRow.dataset.signature = signature;
+    momentRow.innerHTML = `<span>INSTANT REPLAYS</span>${moments.length ? moments.map((moment,index)=>`<button type="button" data-instant-replay="${e(moment.id)}" aria-pressed="false" title="${replayTime(moment.start)} – ${replayTime(moment.end)} · ${moment.rate}×">${index+1} · ${e(moment.label || replayTime(moment.start))}</button>`).join('') : '<p>No replay moments marked</p>'}`;
+  }
+  for (const button of momentRow.querySelectorAll('button'))button.setAttribute('aria-pressed',String(value.phase==='instant-replay' && value.replayId===button.dataset.instantReplay));
   $('#rate-badge').textContent = `${value.rate}×`;
   $('#elapsed').textContent = value.mode === 'holding' ? 'HOLD' : formatTime(value.position);
   $('#duration').textContent = formatTime(value.duration);
@@ -164,12 +175,14 @@ async function importSelected() {
   const number = Number($('#race-number').value); const kind = $('#import-kind').value;
   if (kind === 'race' && (!Number.isInteger(number) || number < 1 || number > 9999)) { toast('Choose a race number between 1 and 9999.', true); return; }
   importing = true;
+  let importedRaces = [];
   $('#import-results').textContent = ''; $('#import-progress').hidden = false;
   document.querySelectorAll('#import-dialog button,#import-dialog input,#import-dialog select').forEach(input => { input.disabled = true; });
   try {
     const result = await api.importFiles([...selection.keys()], kind, number);
     setState(await api.init());
     const added = result.results.filter(x => x.status === 'imported').length;
+    importedRaces = result.results.filter(result=>result.status==='imported' && result.item?.kind==='race').map(result=>result.item.id);
     $('#import-results').textContent = result.results.map(result => {
       if (result.status === 'imported') return `✓ ${result.source}: added to the loop`;
       if (result.status === 'duplicate') {
@@ -178,9 +191,10 @@ async function importSelected() {
       }
       return `× ${result.source}: ${result.message}`;
     }).join('\n') || 'No files were imported. Select files and try again.';
-    if (added && added === result.results.length) {
+    if (importedRaces.length || (added && added === result.results.length)) {
       $('#import-dialog').close();
-      toast(`${added} file${added === 1 ? '' : 's'} added. The current replay keeps playing.`);
+      const issues = result.results.filter(result=>result.status!=='imported');
+      toast(`${added} file${added === 1 ? '' : 's'} added.${issues.length ? ` ${issues.map(result=>`${result.source}: ${result.status==='duplicate'?'already imported; skipped':result.message}`).join(' · ')}` : importedRaces.length ? ' Set up your race recordings now.' : ' The current replay keeps playing.'}`,issues.some(result=>result.status==='error'));
     }
   } catch (error) {
     $('#import-results').textContent = error.message || String(error);
@@ -191,16 +205,7 @@ async function importSelected() {
     $('#parent-folder').disabled = !parentDirectory; $('#confirm-import').disabled = true;
     $('#file-list').querySelectorAll('input').forEach(input => { input.checked = false; });
   }
-}
-function openEdit(id) {
-  const item = state.meeting.items.find(x => x.id === id); if (!item) return;
-  editingId = id; $('#edit-title').value = item.title; $('#edit-duration').value = item.seconds || 12; $('#edit-duration-label').hidden = item.mediaType === 'video';
-  $('#edit-race-label').hidden = item.kind !== 'race';
-  const race = linkedRace(state.meeting,item);
-  $('#edit-race').innerHTML = `<option value="">No linked race</option>${(state.meeting.registration?.races||[]).slice().sort((a,b)=>a.number-b.number).map(r=>`<option value="${e(r.id)}">Race ${String(r.number).padStart(2,'0')} · ${e(r.title)}</option>`).join('')}`;
-  $('#edit-race').value = race?.id || '';
-  $('#edit-race-help').textContent = state.meeting.registration?.races.length ? 'The linked race supplies the display name, racecard and replay details.' : 'Register a race in Races & dogs, then link it here. Matching race numbers connect automatically.';
-  $('#edit-dialog').showModal();
+  if(importedRaces.length)mediaEditor.open(importedRaces);
 }
 function openRemove(id) {
   if (state.busy || removing) return;
@@ -239,8 +244,9 @@ document.addEventListener('click', event => {
     if (button.dataset.seek) await api.command({ type: 'seek', delta: Number(button.dataset.seek) });
     if (button.dataset.rate) await api.command({ type: 'rate', rate: Number(button.dataset.rate) });
     if (button.dataset.play) await api.command({ type: 'play', id: button.dataset.play });
+    if (button.dataset.instantReplay) await api.command({type:'jump-instant-replay',id:button.dataset.instantReplay});
     if (button.dataset.move) await moveItem(button.dataset.move, Number(button.dataset.direction));
-    if (button.dataset.edit) openEdit(button.dataset.edit);
+    if (button.dataset.edit) mediaEditor.open(button.dataset.edit);
     if (button.dataset.editRace) { navigate('registration'); registration.openRace(button.dataset.editRace); }
     if (button.dataset.remove) openRemove(button.dataset.remove);
     if (button.dataset.drive) await browse(button.dataset.drive);
@@ -276,12 +282,6 @@ $('#display-select').addEventListener('change', () => safely(async () => { if (s
 for (const id of ['reveal-button', 'reveal-sponsor-folder', 'open-folder']) $(`#${id}`).addEventListener('click', () => safely(() => api.revealFolder()));
 $('#change-root').addEventListener('click', () => safely(async () => { const next = await api.chooseRoot(); if (next) setState(next); }));
 $('#shortcuts-button').addEventListener('click', () => $('#shortcuts-dialog').showModal());
-$('#edit-form').addEventListener('submit', event => { event.preventDefault(); safely(async () => {
-  const patch = { title: $('#edit-title').value, seconds: Number($('#edit-duration').value) };
-  const item = state.meeting.items.find(item=>item.id===editingId);
-  if (item?.kind === 'race' && $('#edit-race').value !== (linkedRace(state.meeting,item)?.id || '')) patch.raceId = $('#edit-race').value || null;
-  setState(await api.patchItem(editingId,patch)); $('#edit-dialog').close();
-}); });
 document.addEventListener('keydown', event => {
   if (document.querySelector('dialog[open]')) return;
   if (event.key === '?' && !event.target.matches('input,textarea,select')) { event.preventDefault(); $('#shortcuts-dialog').showModal(); return; }

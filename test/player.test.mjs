@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Player } from '../src/renderer/player.mjs';
+import { Player, StageView } from '../src/renderer/player.mjs';
 
 // A controllable media surface lets us verify transport decisions without a codec
 // or physical display. The desktop smoke test separately covers real media / IPC.
@@ -292,4 +292,88 @@ test('jumping to unavailable results or a banner safely does nothing',t=>{
   player.command({type:'jump-results'});assert.equal(player.phase,'racecard');
   player.command({type:'jump-replay'});assert.equal(player.phase,'media');assert.equal(video.paused,false);
   player.command({type:'holding'});player.command({type:'jump-racecard'});player.command({type:'jump-replay'});assert.equal(player.item.id,'park');
+});
+
+function advanceWipe(player) { player.last-=450; player.tick(); }
+function withMoments(t, linked = true) {
+  const context = linked ? timedReplay(t) : setup(t), {meeting,player} = context;
+  meeting.items.find(item=>item.id==='race1').replaySections = [
+    {id:'bend',start:2,end:4,rate:.5,label:'Bend'},
+    {id:'finish',start:12,end:15,rate:.25,label:'Finish'}
+  ];
+  player.setMeeting(structuredClone(meeting));
+  player.command({type:'play',id:'race1'});
+  if(linked)player.command({type:'jump-replay'});
+  return context;
+}
+
+test('every marked moment plays at its own speed, with wipes, before results',t=>{
+  const {player,video}=withMoments(t);
+  player.command({type:'rate',rate:.75});video.currentTime=19.7;player.tick();
+  assert.equal(player.phase,'instant-replay');assert.equal(player.status().wipe.direction,'out');assert.equal(video.paused,false);assert.equal(video.currentTime,19.7);assert.equal(video.playbackRate,.75);
+  advanceWipe(player);assert.equal(video.currentTime,2);assert.equal(player.status().wipe.direction,'in');assert.equal(video.playbackRate,.5);assert.equal(video.paused,false);
+  advanceWipe(player);assert.equal(video.paused,false);assert.equal(player.status().wipe,null);
+  video.currentTime=3.8;player.tick();assert.equal(video.currentTime,3.8);assert.equal(player.status().wipe.direction,'out');assert.equal(video.paused,false);
+  advanceWipe(player);assert.equal(video.currentTime,12);assert.equal(video.playbackRate,.25);assert.equal(player.status().replayId,'finish');
+  advanceWipe(player);video.currentTime=15;player.tick();advanceWipe(player);
+  assert.equal(player.phase,'results');assert.ok(video.currentTime>19.9);assert.equal(player.rate,.75);assert.equal(video.playbackRate,.75);
+  advanceWipe(player);assert.equal(player.status().wipe,null);assert.equal(video.paused,true);
+  player.command({type:'jump-replay'});assert.equal(video.playbackRate,.75);assert.equal(video.currentTime,0);
+});
+
+test('live replay speed changes save only that moment and retain footage, pause and race speed',async t=>{
+  const {player,video}=withMoments(t),saved=[];
+  player.saveReplayRate=async edit=>saved.push(edit);
+  player.command({type:'rate',rate:.75});player.command({type:'jump-instant-replay'});advanceWipe(player);advanceWipe(player);
+  video.currentTime=3;player.command({type:'rate',rate:1});
+  assert.equal(video.currentTime,3);assert.equal(video.paused,false);assert.equal(video.playbackRate,1);assert.equal(player.rate,.75);
+  assert.equal(player.meeting.items.find(item=>item.id==='race1').replaySections[0].rate,1);assert.equal(player.activeReplays[1].rate,.25);
+  player.command({type:'toggle'});player.command({type:'cycle-rate'});assert.equal(video.playbackRate,.25);assert.equal(video.paused,true);
+  player.command({type:'holding'});await Promise.resolve();await Promise.resolve();
+  assert.deepEqual(saved.map(edit=>[edit.id,edit.sectionId,edit.rate]),[['race1','bend',1],['race1','bend',.25]]);
+  player.command({type:'play',id:'race1'});player.command({type:'jump-replay'});assert.equal(video.playbackRate,.75);
+});
+
+test('the desk mirror keeps both outgoing and incoming footage moving under the wipe',()=>{
+  const video=new Media(),view=Object.create(StageView.prototype);view.video=video;view.show=()=>{};view.mirrorPhase='media';
+  video.currentTime=8.1;
+  const status={phase:'instant-replay',replayId:'bend',position:8,paused:false,rate:.25,mediaRate:1,wipe:{direction:'out'}};
+  view.mirror({mediaType:'video'},null,status);assert.equal(video.paused,false);assert.equal(video.currentTime,8.1);assert.equal(video.playbackRate,1);
+  view.mirror({mediaType:'video'},null,{...status,position:2,mediaRate:.25,wipe:{direction:'in'}});
+  assert.equal(video.currentTime,2);assert.equal(video.paused,false);assert.equal(video.playbackRate,.25);
+});
+
+test('very short replay moments use shorter wipes and still play behind their reveal',t=>{
+  const {player,video,meeting}=withMoments(t);
+  meeting.items.find(item=>item.id==='race1').replaySections=[{id:'short',start:19.8,end:20,rate:1}];
+  player.setMeeting(structuredClone(meeting));player.command({type:'jump-instant-replay'});advanceWipe(player);
+  assert.equal(video.currentTime,19.8);assert.equal(video.paused,false);assert.ok(player.status().wipe.duration<.1);
+});
+
+test('direct moment jumps preserve pause; pause and blackout freeze wipes and clips',t=>{
+  const {player,video}=withMoments(t);
+  player.command({type:'toggle'});player.command({type:'jump-instant-replay',id:'finish'});
+  player.last-=1000;player.tick();assert.equal(player.status().wipe.position,0);assert.equal(player.replayIndex,1);
+  player.command({type:'toggle'});advanceWipe(player);advanceWipe(player);assert.equal(video.currentTime,12);assert.equal(video.paused,false);
+  player.command({type:'blackout'});player.last-=1000;player.tick();assert.equal(video.paused,true);assert.equal(player.status().replayId,'finish');
+  player.command({type:'blackout'});assert.equal(video.paused,false);
+  player.command({type:'jump-results'});assert.equal(player.phase,'results');assert.equal(player.status().wipe,null);
+});
+
+test('instant replay supports unlinked videos and restores normal speed for the next item',t=>{
+  const {player,video}=withMoments(t,false);
+  player.command({type:'jump-instant-replay',id:'missing'});assert.equal(player.phase,'media');
+  player.command({type:'jump-instant-replay',id:'finish'});advanceWipe(player);advanceWipe(player);
+  video.currentTime=15;player.tick();advanceWipe(player);assert.equal(player.item.id,'park');
+  advanceWipe(player);assert.equal(player.status().wipe,null);assert.equal(player.status().rate,1);
+});
+
+test('wipes wait for decoded seeks and a saved edit does not restart an active moment',t=>{
+  const {player,video,meeting}=withMoments(t);
+  player.command({type:'jump-instant-replay'});advanceWipe(player);
+  video.seeking=true;advanceWipe(player);assert.equal(player.status().wipe.position,0);assert.equal(player.status().wipe.waiting,true);
+  video.seeking=false;advanceWipe(player);video.currentTime=3;
+  meeting.items.find(item=>item.id==='race1').replaySections=[];player.setMeeting(structuredClone(meeting));
+  assert.equal(video.currentTime,3);assert.equal(player.status().replayId,'bend');assert.equal(video.playbackRate,.5);
+  player.command({type:'next'});assert.equal(player.status().wipe,null);assert.equal(player.item.id,'park');
 });

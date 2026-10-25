@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('replay', {
   saveRegistry: data => ipcRenderer.invoke('registry:save', data),
   dates: () => ipcRenderer.invoke('meeting:dates'),
   patchItem: (id, patch) => ipcRenderer.invoke('item:patch', id, patch),
+  saveReplayRate: edit => ipcRenderer.invoke('replay:rate', edit),
   removeItem: id => ipcRenderer.invoke('item:remove', id),
   reorder: ids => ipcRenderer.invoke('items:reorder', ids),
   patchSettings: patch => ipcRenderer.invoke('settings:patch', patch),

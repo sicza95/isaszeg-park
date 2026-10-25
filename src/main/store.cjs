@@ -150,15 +150,8 @@ class MeetingStore {
     });
   }
   async patchItem(date, id, patch) {
-    const { setRaceLink } = await import('../shared/race-links.mjs');
-    return this.update(date, data => {
-      const item = data.items.find(x => x.id === id);
-      if (!item) throw new Error('This item no longer exists.');
-      if (Object.hasOwn(patch, 'raceId')) setRaceLink(data, item, patch.raceId);
-      if (typeof patch.enabled === 'boolean') item.enabled = patch.enabled;
-      if (typeof patch.title === 'string' && patch.title.trim()) item.title = patch.title.trim().slice(0, 100);
-      if (Number.isFinite(patch.seconds)) item.seconds = Math.min(120, Math.max(3, patch.seconds));
-    });
+    const { applyMediaEdit } = await import('../shared/media-edit.mjs');
+    return this.update(date, data => applyMediaEdit(data,id,patch));
   }
   removeItem(date, id) {
     return this.update(date, data => {

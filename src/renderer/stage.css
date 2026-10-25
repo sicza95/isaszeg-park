@@ -17,6 +17,15 @@
 .stage.with-rail>video,.stage.with-rail>img{height:91%}
 .stage.with-rail>.stage-race-label{bottom:13%}
 .stage-blackout{position:absolute;inset:0;background:#000;z-index:10}
+.replay-wipe{position:absolute;inset:0;z-index:8;pointer-events:none;overflow:hidden}
+.replay-wipe-panel{position:absolute;top:-10%;bottom:-10%;left:-40%;right:-40%;background:linear-gradient(110deg,#232a34,#3e4857 65%,#303946);transform:translateX(var(--replay-wipe-x,-110%)) skewX(-18deg);will-change:transform;box-shadow:0 0 4cqw #0005}
+.replay-wipe-panel::before{content:'';position:absolute;inset:0 0 0 auto;width:4%;background:#e0c18b;box-shadow:-1.2cqw 0 #e0c18b33,-1.5cqw 0 #ffffff17}
+.replay-wipe-panel::after{content:'';position:absolute;inset:0 auto 0 0;width:1.5%;background:#e0c18b;box-shadow:1cqw 0 #e0c18b33}
+.replay-wipe-brand{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.4cqw;transform:skewX(18deg);font-family:Arial,sans-serif;color:#f2e2c6}
+.replay-wipe-brand>span{font-size:1.4cqw;letter-spacing:.6cqw;font-weight:600}
+.replay-wipe-brand>strong{font-size:6cqw;letter-spacing:.8cqw;font-weight:750;font-style:italic;line-height:1}
+.replay-wipe-brand>i{width:5cqw;height:.25cqw;background:#e0c18b}
+.instant-replay-badge{position:absolute;right:3%;top:4%;z-index:4;padding:.55cqw .8cqw;border:1px solid #e1c39477;border-radius:.3cqw;background:#17130ed9;color:#f0d4a4;font:600 1.1cqw Arial,sans-serif;letter-spacing:.08cqw}
 .preview-stage .stage-race-label strong{font-size:16px}
 .preview-stage .rail-brand{font-size:10px}.preview-stage .rail-sponsor{font-size:12px}.preview-stage .rail-tag{font-size:7px}
 @keyframes banner-breathe{from{transform:scale(1)}to{transform:scale(1.018)}}
