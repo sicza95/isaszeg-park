@@ -15,3 +15,7 @@
 .runner-status-options button:hover,.runner-status-options button:focus-visible{background:#393940;outline:none}
 .runner-status-options button>svg{width:13px;height:13px;color:#d5d5df;visibility:hidden}
 .runner-status-options button[aria-selected=true]>svg{visibility:visible}
+.result-warning{font-size:11px;color:#e2b67e;line-height:1.5;margin:10px 0 14px}
+.missing-finish-time input[name^=time-]{border-color:#a17b47}
+.duplicate-finish-time input[name^=time-]{border-color:#a17b47}
+.invalid-entered-status .runner-status-trigger{border-color:#a17b47}

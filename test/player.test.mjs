@@ -173,6 +173,42 @@ function registerFirst(meeting) {
   meeting.settings.racecardSeconds = 10;
 }
 
+test('hold commands ignore absent and disabled banners, and select an enabled custom banner', t => {
+  const {player,meeting,video}=setup(t);
+  for(const remove of [false,true]) {
+    if(remove)meeting.items=meeting.items.filter(item=>item.kind!=='banner');
+    else meeting.items.find(item=>item.kind==='banner').enabled=false;
+    player.setMeeting(structuredClone(meeting));player.command({type:'latest'});video.currentTime=4;
+    player.command({type:'holding'});
+    assert.equal(player.status().id,'race1');assert.equal(player.status().mode,'loop');assert.equal(video.currentTime,4);
+  }
+  meeting.items.push({id:'custom',kind:'banner',enabled:true,mediaType:'image',url:'custom.jpg'});
+  player.setMeeting(structuredClone(meeting));player.command({type:'holding'});
+  assert.equal(player.status().id,'custom');assert.equal(player.status().mode,'holding');
+});
+
+test('playback follows changed image defaults and limits sponsor videos without truncating race videos', t => {
+  const {player,meeting,video}=setup(t);
+  delete meeting.items[0].seconds;meeting.settings.bannerSeconds=22;meeting.settings.sponsorSeconds=7;
+  meeting.items.push({id:'sponsor',kind:'ad',enabled:true,mediaType:'video',url:'sponsor.mp4'});
+  player.setMeeting(structuredClone(meeting));assert.equal(player.status().duration,22);
+  player.command({type:'play',id:'sponsor'});assert.equal(player.status().duration,7);
+  video.currentTime=7;player.tick();assert.notEqual(player.status().id,'sponsor');
+  player.command({type:'latest'});video.currentTime=9;player.tick();assert.equal(player.status().id,'race1');
+  meeting.items[0].seconds=4;player.setMeeting(structuredClone(meeting));player.command({type:'play',id:'park'});
+  assert.equal(player.status().duration,4);player.position=4;player.tick();assert.equal(player.status().id,'race1');
+});
+
+test('results visibility can change during playback without restarting the results', t => {
+  const {player,meeting}=setup(t);registerFirst(meeting);
+  meeting.registration.races[0].entries=[{dogId:'dog',trap:1,status:'FIN',time:'20.10'}];
+  meeting.settings.resultsSeconds=25;player.setMeeting(structuredClone(meeting));player.command({type:'latest'});player.command({type:'jump-results'});
+  assert.ok(player.status().duration>25);player.position=10;player.tick();assert.equal(player.status().phase,'results');
+  const position=player.position;
+  meeting.settings.resultsSeconds=3;player.setMeeting(structuredClone(meeting));assert.equal(player.position,position);
+  player.tick();assert.equal(player.status().id,'park');
+});
+
 test('linked replays show a timed card before starting video, including metadata readiness', t => {
   const {player,video,meeting} = setup(t); registerFirst(meeting); player.setMeeting(meeting);
   player.command({type:'play',id:'race1'});

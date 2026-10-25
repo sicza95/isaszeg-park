@@ -1,7 +1,8 @@
-import { entryStatus, finishingOrder, RUNNER_STATUSES } from './race-results.mjs';
+import { entryStatus, finishingOrder, assertUniqueFinishTimes, validFinishTime, RUNNER_STATUSES } from './race-results.mjs';
 
 const text = (value, max = 160) => typeof value === 'string' ? value.trim().slice(0, max) : '';
-function validateRegistration(input) {
+const timingKey = race => JSON.stringify((race?.entries || []).map(entry=>[entry.trap,entry.dogId,entryStatus(entry),Number(entry.time)||null,Number(entry.estimatedTime)||null]).sort((a,b)=>a[0]-b[0]));
+function validateRegistration(input, {previous, editedRaceId} = {}) {
   if (!input || !Array.isArray(input.races) || !Array.isArray(input.dogs) || input.races.length > 500 || input.dogs.length > 20000) throw new Error('Invalid registration data.');
   const people = (input.people || []).map(person => ({id:text(person.id),name:text(person.name)}));
   const personIds = new Set();
@@ -48,11 +49,18 @@ function validateRegistration(input) {
       for (const key of ['weight','split','finalSplit','time','estimatedTime']) {
         const value = text(entry[key]);
         if (value && (!Number.isFinite(Number(value)) || Number(value) <= 0)) throw new Error('Weights and times must be positive numbers.');
+        if (value && ['time','estimatedTime'].includes(key) && !validFinishTime(value)) throw new Error('Finish times must use at most three decimal places.');
         result[key] = value;
       }
       result.remarks = text(entry.remarks, 500); result.going = text(entry.going, 30);
       return result;
     });
+    const previousRace = previous?.races.find(value=>value.id===id);
+    // Published legacy results can have rounded ties. Preserve them for review;
+    // new results and the race being edited must have distinct finish times.
+    const legacyImport = id!==editedRaceId && !previousRace && race.entries.length>0 && race.entries.every(entry=>!entry.status && entry.finish);
+    const unchanged = previousRace && id!==editedRaceId && timingKey(race)===timingKey(previousRace);
+    if (!legacyImport && !unchanged) assertUniqueFinishTimes({number,entries});
     const {places} = finishingOrder({entries});
     for (const entry of entries) entry.finish = String(places.get(entry.trap) || '');
     return {id,number,title,distance,breed:race.breed,type:race.type,grade:text(race.grade,20),sourceUrl:text(race.sourceUrl),videoReference:text(race.videoReference),entries};

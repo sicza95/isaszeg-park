@@ -1,6 +1,8 @@
 import { linkedRace, setRaceLink } from './race-links.mjs';
 import { validateRegistration } from './registration.mjs';
 import { validateReplaySections, REPLAY_RATES } from './instant-replays.mjs';
+import { isColor } from './media-settings.mjs';
+import { unresolvedUntimedRunners } from './race-results.mjs';
 
 // Validate the entire edit before committing either media or runner changes.
 export function applyMediaEdit(meeting, id, patch) {
@@ -9,7 +11,17 @@ export function applyMediaEdit(meeting, id, patch) {
   if (Object.hasOwn(patch,'raceId')) setRaceLink(draft,item,patch.raceId);
   if (typeof patch.enabled === 'boolean') item.enabled = patch.enabled;
   if (typeof patch.title === 'string' && patch.title.trim()) item.title = patch.title.trim().slice(0,100);
-  if (Number.isFinite(patch.seconds)) item.seconds = Math.min(120,Math.max(3,patch.seconds));
+  if (patch.seconds === null || patch.seconds === '') delete item.seconds;
+  else if (Number.isFinite(patch.seconds)) item.seconds = Math.min(120,Math.max(3,patch.seconds));
+  for (const key of ['sponsorBackground', 'sponsorForeground']) {
+    if (!Object.hasOwn(patch,key)) continue;
+    if (item.kind !== 'ad') throw new Error('Footer colors can only be set for sponsors.');
+    if (patch[key] === null || patch[key] === '') delete item[key];
+    else {
+      if (!isColor(patch[key])) throw new Error('Choose a valid footer color.');
+      item[key] = patch[key];
+    }
+  }
   if (Object.hasOwn(patch,'replaySections')) {
     if (item.kind !== 'race' || item.mediaType !== 'video') throw new Error('Instant replays need a race video.');
     item.replaySections = validateReplaySections(patch.replaySections);
@@ -28,7 +40,16 @@ export function applyMediaEdit(meeting, id, patch) {
       if (!edit) throw new Error('The runners changed. Reopen the editor and try again.');
       return {...entry, status: edit.status, time: edit.time, split: edit.split};
     });
-    draft.registration = validateRegistration(draft.registration);
+    if (item.resultsPending) {
+      const unresolved = unresolvedUntimedRunners(race);
+      if (unresolved.length) {
+        const confirmed = patch.confirmNonRunnerTraps;
+        if (!Array.isArray(confirmed) || confirmed.length !== unresolved.length || new Set(confirmed).size !== confirmed.length || unresolved.some(entry=>!confirmed.includes(entry.trap))) throw new Error('Confirm the dogs without finish times before saving this new video.');
+        for (const entry of unresolved) entry.status = 'NR';
+      }
+      delete item.resultsPending;
+    }
+    draft.registration = validateRegistration(draft.registration,{previous:meeting.registration,editedRaceId:race.id});
   }
   meeting.items = draft.items;
   meeting.registration = draft.registration;

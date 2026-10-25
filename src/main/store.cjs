@@ -4,10 +4,10 @@ const path = require('node:path');
 const { createHash, randomUUID } = require('node:crypto');
 const { Transform } = require('node:stream');
 const { pipeline } = require('node:stream/promises');
+const { setTimeout: delay } = require('node:timers/promises');
 
 const VIDEOS = new Set(['.mp4', '.m4v', '.mov', '.webm']);
 const IMAGES = new Set(['.jpg', '.jpeg', '.png', '.webp']);
-const RATES = [0.25, 0.5, 0.75, 1];
 function localDate(now = new Date()) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Budapest', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
 }
@@ -20,11 +20,11 @@ function validDate(date) {
 function defaults(date) {
   return {
     version: 1, date, title: 'Race day',
-    settings: { bannerSeconds: 12, racecardSeconds: 10, adEvery: 2, sponsorRail: false, muted: true, defaultRate: 1, autoBrowse: true },
+    settings: { bannerSeconds: 12, sponsorSeconds: 10, resultsSeconds: 5, sponsorBackground: '#000000', sponsorForeground: '#f4f4f5', racecardSeconds: 10, adEvery: 2, sponsorRail: false, muted: true, defaultRate: 1, autoBrowse: true },
     items: [
-      { id: 'park', title: 'Welcome to Isaszeg Park', kind: 'banner', builtin: 'park', enabled: true, seconds: 12 },
-      { id: 'redmills', title: 'Connolly’s RED MILLS', kind: 'ad', builtin: 'redmills', enabled: false, seconds: 10, mock: true },
-      { id: 'pedro', title: 'PEDRO', kind: 'ad', builtin: 'pedro', enabled: false, seconds: 10, mock: true }
+      { id: 'park', title: 'Welcome to Isaszeg Park', kind: 'banner', builtin: 'park', enabled: true },
+      { id: 'redmills', title: 'Connolly’s RED MILLS', kind: 'ad', builtin: 'redmills', enabled: false, mock: true },
+      { id: 'pedro', title: 'PEDRO', kind: 'ad', builtin: 'pedro', enabled: false, mock: true }
     ]
   };
 }
@@ -32,7 +32,14 @@ async function atomicJSON(file, data) {
   const temp = `${file}.${randomUUID()}.tmp`;
   try {
     await fs.writeFile(temp, JSON.stringify(data, null, 2) + '\n', { flag: 'wx' });
-    await fs.rename(temp, file);
+    // Windows can briefly lock the destination while it is read or scanned.
+    for (let attempt = 0; ; attempt++) {
+      try { await fs.rename(temp, file); break; }
+      catch (error) {
+        if (process.platform !== 'win32' || !['EPERM','EACCES','EBUSY'].includes(error.code) || attempt >= 5) throw error;
+        await delay(25 * (attempt + 1));
+      }
+    }
   } finally { await fs.rm(temp, { force: true }).catch(() => {}); }
 }
 async function sha256(file) {
@@ -133,7 +140,7 @@ class MeetingStore {
     return this.exclusive(async () => {
       const data = await this.load(date);
       const registry = mergeRegistry(await this.registry(),input);
-      const registration = validateRegistration(withRegistry(input,registry));
+      const registration = validateRegistration(withRegistry(input,registry),{previous:data.registration});
       await this.checkRegistryBreeds(registry,date);
       bindRaceLinks(data);
       await this.writeRegistry(registry);
@@ -160,13 +167,10 @@ class MeetingStore {
       data.items.splice(index, 1);
     });
   }
-  patchSettings(date, patch) {
+  async patchSettings(date, patch) {
+    const { applySettings } = await import('../shared/media-settings.mjs');
     return this.update(date, data => {
-      for (const key of ['sponsorRail', 'muted', 'autoBrowse']) if (typeof patch[key] === 'boolean') data.settings[key] = patch[key];
-      if (Number.isFinite(patch.bannerSeconds)) data.settings.bannerSeconds = Math.min(120, Math.max(3, patch.bannerSeconds));
-      if (Number.isFinite(patch.racecardSeconds)) data.settings.racecardSeconds = Math.min(60, Math.max(5, patch.racecardSeconds));
-      if (Number.isInteger(patch.adEvery)) data.settings.adEvery = Math.min(20, Math.max(1, patch.adEvery));
-      if (RATES.includes(patch.defaultRate)) data.settings.defaultRate = patch.defaultRate;
+      applySettings(data.settings, patch);
     });
   }
   reorder(date, ids) {
@@ -216,8 +220,8 @@ class MeetingStore {
           const item = {
             id, kind, title: kind === 'race' ? `Race ${String(number).padStart(2, '0')}` : path.parse(source).name,
             file: filename, originalName: path.basename(source), bytes: before.size, sha256: digest,
-            enabled: true, importedAt: new Date().toISOString(), seconds: data.settings.bannerSeconds,
-            mediaType: VIDEOS.has(ext) ? 'video' : 'image', ...(kind === 'race' ? { raceNumber: number } : {})
+            enabled: true, importedAt: new Date().toISOString(),
+            mediaType: VIDEOS.has(ext) ? 'video' : 'image', ...(kind === 'race' ? { raceNumber: number, resultsPending: true } : {})
           };
           data.items.push(item);
           bindRaceLinks(data);

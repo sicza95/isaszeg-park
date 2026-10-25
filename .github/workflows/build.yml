@@ -35,6 +35,9 @@ jobs:
       - name: Global registry and inline registration smoke test
         if: runner.os == 'Linux'
         run: xvfb-run -a npm run test:registration
+      - name: Settings, sponsor footer and result editing smoke test
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npm run test:settings
       - uses: actions/upload-artifact@v4
         if: always() && runner.os == 'Linux'
         with:

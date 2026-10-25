@@ -1,4 +1,5 @@
-import { makePlaylist, nextItem, holdingItem, RATES } from '../shared/playlist.mjs';
+import { makePlaylist, nextItem, holdingItem, enabledBanner, RATES } from '../shared/playlist.mjs';
+import { mediaSeconds, footerSponsor, sponsorColors } from '../shared/media-settings.mjs';
 import { linkedRace, replayTitle, racecardSeconds, racecardDuration, reverseRacecardTime, RACECARD_TRANSITION_SECONDS } from '../shared/race-links.mjs';
 import { racePresentation } from './race-presentation.mjs';
 import { ReversePlayback } from './reverse-playback.mjs';
@@ -59,7 +60,7 @@ export class StageView {
         if (this.cardFrame === null) this.cardFrame = requestAnimationFrame(now => this.animateRacecard(now));
       }
       if (results) {
-        this.resultsClock = { timeline: raceResults(race), position: status.position || 0, paused: status.paused || Boolean(status.wipe), at: performance.now() };
+        this.resultsClock = { timeline: raceResults(race, meeting.settings), position: status.position || 0, paused: status.paused || Boolean(status.wipe), at: performance.now() };
         this.video.pause();
         this.drawResults(performance.now());
         if (this.resultsFrame === null) this.resultsFrame = requestAnimationFrame(now => this.animateResults(now));
@@ -74,10 +75,16 @@ export class StageView {
     const rail = meeting.settings.sponsorRail && ads.length > 0;
     this.stage.classList.toggle('with-rail', Boolean(rail)); this.rail.hidden = !rail;
     if (rail) {
-      const sponsor = ads[Math.floor(Date.now() / 12000) % ads.length];
-      this.rail.replaceChildren();
-      for (const [className, text] of [['rail-brand', 'ISASZEG PARK'], ['rail-tag', sponsor.mock ? 'MOCK SPONSOR CONCEPT' : 'RACE DAY PARTNER'], ['rail-sponsor', sponsor.title]]) {
-        const span = document.createElement('span'); span.className = className; span.textContent = text; this.rail.append(span);
+      const sponsor = footerSponsor(meeting), colors = sponsorColors(meeting, sponsor);
+      this.rail.style.backgroundColor = colors.sponsorBackground;
+      this.rail.style.color = colors.sponsorForeground;
+      const signature = JSON.stringify([sponsor.id, sponsor.title, sponsor.mock]);
+      if (signature !== this.railContent) {
+        this.railContent = signature;
+        this.rail.replaceChildren();
+        for (const [className, text] of [['rail-brand', 'ISASZEG PARK'], ['rail-tag', sponsor.mock ? 'MOCK SPONSOR CONCEPT' : 'RACE DAY PARTNER'], ['rail-sponsor', sponsor.title]]) {
+          const span = document.createElement('span'); span.className = className; span.textContent = text; this.rail.append(span);
+        }
       }
     }
   }
@@ -130,7 +137,7 @@ export class StageView {
     this.stage.style.setProperty('--results-clock', `${elapsed}s`);
     this.stage.style.setProperty('--results-enter', String(Math.min(1,elapsed/.8)));
     this.stage.style.setProperty('--results-exit', String(exit*exit*(3-2*exit)));
-    this.stage.style.setProperty('--results-hold', String(Math.max(0,Math.min(1,(elapsed-timeline.completeAt)/5))));
+    this.stage.style.setProperty('--results-hold', String(Math.max(0,Math.min(1,(elapsed-timeline.completeAt)/timeline.holdSeconds))));
     this.stage.classList.toggle('results-complete', elapsed >= timeline.completeAt);
   }
   animateResults(now) {
@@ -182,7 +189,7 @@ export class Player {
     if (changedDay) { this.failed.clear(); const first = this.available()[0]; this.mode = first ? 'loop' : 'holding'; this.paused = false; this.blackout = false; this.load(first || this.holding()); }
     else {
       const current = this.queue.find(x => x.playlistSlot === this.item?.playlistSlot) || meeting.items.find(x => x.id === this.item?.id);
-      if (current && (current.enabled || this.mode === 'holding')) {
+      if (current && current.enabled) {
         if (current.url !== this.item.url) this.load(current); else this.item = current;
       } else if (this.mode === 'holding') this.load(this.holding());
       else {
@@ -224,6 +231,7 @@ export class Player {
     this.emit();
   }
   finishMedia() {
+    if (this.mode === 'holding') { this.load(this.holding()); return; }
     if (!this.pendingError && this.startInstantReplay()) return;
     this.finishResults();
   }
@@ -338,9 +346,16 @@ export class Player {
   advance(direction = 1) { this.mode = 'loop'; const queue = this.available(); const next = nextItem(queue, this.item, direction); if (next) this.load(next); else { this.mode = 'holding'; this.load(this.holding()); } }
   status() {
     const video = this.item?.mediaType === 'video' && ['media','instant-replay'].includes(this.phase);
+    let duration = mediaSeconds(this.meeting,this.item);
+    if (this.phase === 'racecard') duration = racecardDuration(this.meeting);
+    else if (this.phase === 'results') duration = raceResults(linkedRace(this.meeting,this.item),this.meeting.settings).duration;
+    else if (video) {
+      duration = Number.isFinite(this.view.video.duration) ? this.view.video.duration : 0;
+      if (this.item.kind !== 'race' && this.mode !== 'holding') duration = Math.min(duration,mediaSeconds(this.meeting,this.item));
+    }
     return {
       id: this.item?.id, title: replayTitle(this.meeting,this.item), position: video ? this.view.video.currentTime : this.position,
-      duration: this.phase === 'racecard' ? racecardDuration(this.meeting) : this.phase === 'results' ? raceResults(linkedRace(this.meeting,this.item)).duration : video ? (Number.isFinite(this.view.video.duration) ? this.view.video.duration : 0) : (this.item?.seconds || 12),
+      duration,
       mediaPosition: this.item?.mediaType === 'video' ? this.view.video.currentTime : 0,
       mediaRate: this.view.video.playbackRate,
       phase: this.phase, raceId: linkedRace(this.meeting,this.item)?.id || null,
@@ -368,10 +383,12 @@ export class Player {
       if (this.position >= racecardDuration(this.meeting)) this.startMedia();
     } else if (!this.paused && this.phase === 'results' && !this.pendingError) {
       this.position += delta;
-      if (this.position >= raceResults(linkedRace(this.meeting,this.item)).duration) this.advance();
+      if (this.position >= raceResults(linkedRace(this.meeting,this.item), this.meeting.settings).duration) this.advance();
+    } else if (!this.paused && this.phase === 'media' && this.item.mediaType === 'video' && this.item.kind !== 'race' && this.mode !== 'holding' && !this.pendingError) {
+      if (this.view.video.currentTime >= mediaSeconds(this.meeting,this.item)) this.advance();
     } else if (!this.paused && this.item.mediaType !== 'video' && !this.pendingError) {
       this.position += delta;
-      if (this.mode !== 'holding' && this.position >= (this.item.seconds || 12)) this.advance();
+      if (this.mode !== 'holding' && this.position >= mediaSeconds(this.meeting,this.item)) this.advance();
     }
     this.view.show(this.item, this.meeting, this.status());
     if (wasTransitioning !== this.status().transitioning || now-(this.lastReport || 0) >= 250) this.emit();
@@ -392,7 +409,7 @@ export class Player {
       case 'scrub': if (this.phase === 'media' && this.item?.mediaType === 'video' && Number.isFinite(video.duration) && Number.isFinite(command.fraction)) video.currentTime = Math.max(0, Math.min(video.duration - .02, command.fraction * video.duration)); break;
       case 'next': this.blackout = false; this.advance(); break;
       case 'previous': this.blackout = false; this.advance(-1); break;
-      case 'holding': this.mode = 'holding'; this.blackout = false; this.paused = false; this.load(this.holding()); break;
+      case 'holding': if (enabledBanner(this.meeting)) { this.mode = 'holding'; this.blackout = false; this.paused = false; this.load(this.holding()); } break;
       case 'latest': {
         const races = this.meeting.items.filter(x => x.kind === 'race' && x.enabled).sort((a, b) => (b.importedAt || '').localeCompare(a.importedAt || '') || b.raceNumber - a.raceNumber);
         if (races[0]) { this.mode = 'loop'; this.blackout = false; this.paused = false; this.load(races[0]); }

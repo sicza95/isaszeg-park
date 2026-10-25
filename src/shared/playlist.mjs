@@ -1,6 +1,9 @@
 export const RATES = [0.25, 0.5, 0.75, 1];
+export function enabledBanner(meeting) {
+  return meeting?.items.find(item => item.kind === 'banner' && item.enabled);
+}
 export function holdingItem(meeting) {
-  return meeting.items.find(item => item.builtin === 'park') || { id: 'holding', title: 'Isaszeg Park', kind: 'banner', mediaType: 'image', url: '../../assets/park.jpg', seconds: 12 };
+  return enabledBanner(meeting) || { id: 'holding', title: 'Isaszeg Park', kind: 'banner', mediaType: 'image', url: '../../assets/park.jpg' };
 }
 export function makePlaylist(meeting) {
   const items = meeting.items.filter(item => item.enabled);

@@ -1,10 +1,11 @@
 import { icon, fillIcons, escapeHTML as e } from './icons.mjs';
-import { commandForKey, formatTime, holdingItem } from '../shared/playlist.mjs';
+import { commandForKey, formatTime, holdingItem, enabledBanner } from '../shared/playlist.mjs';
 import { StageView, Player } from './player.mjs';
 import { createRegistrationView } from './registration.mjs';
 import { createDemoAPI } from './demo-api.mjs';
 import { linkedRace, replayTitle } from '../shared/race-links.mjs';
-import { raceResults } from '../shared/race-results.mjs';
+import { raceResults, resultWarnings } from '../shared/race-results.mjs';
+import { mediaSeconds } from '../shared/media-settings.mjs';
 import { replaySections, replayTime, replayTrackGradient } from '../shared/instant-replays.mjs';
 import { createMediaEditor } from './media-editor.mjs';
 const $ = selector => document.querySelector(selector);
@@ -20,6 +21,16 @@ function toast(message, error = false) { const box = $('#toast'); box.textConten
 async function safely(fn) { try { return await fn(); } catch (error) { toast(error.message || String(error), true); } }
 function bytes(size) { if (!size) return '—'; return size > 1024 ** 3 ? `${(size / 1024 ** 3).toFixed(1)} GB` : `${(size / 1024 ** 2).toFixed(1)} MB`; }
 function thumb(item) { return item.mediaType === 'video' ? icon('film') : `<img src="${e(item.url)}" alt="">`; }
+function mediaIndicators(item) {
+  const count = replaySections(item).length, race = linkedRace(state.meeting,item);
+  const warning = race && resultWarnings(race,{hasVideo:item.mediaType==='video'}).message;
+  return `${count ? `<span class="media-indicator" role="img" title="${count} replay moment${count===1?'':'s'} marked" aria-label="${count} replay moments marked">${icon('replay')}${count}</span>` : ''}${warning ? `<span class="media-indicator result-indicator" role="img" title="${e(warning)}" aria-label="${e(warning)}">${icon('warning')}</span>` : ''}`;
+}
+function mediaSummary(item) {
+  const duration = `${mediaSeconds(state.meeting,item)}s${item.seconds==null?' · default':''}`;
+  const label = item.kind === 'race' ? `REPLAY · ${bytes(item.bytes)}` : `${item.kind==='ad'?'SPONSOR':'BANNER'}${item.mock?' · MOCK AD':''}${item.mediaType==='video'?' · VIDEO':''} · ${duration}`;
+  return `${label}${mediaIndicators(item)}`;
+}
 function navigate(page) {
   activePage = page;
   history.replaceState(null, '', `#${page}`);
@@ -36,7 +47,7 @@ function playlistRow(item) {
   const link = item.kind === 'race' ? race
     ? `<button class="race-link linked" data-edit-race="${e(race.id)}" title="Edit the linked race card">${icon('list')}Linked race ${String(race.number).padStart(2,'0')} · Edit race ${icon('arrow')}</button>`
     : `<button class="race-link unlinked" data-edit="${e(item.id)}">${icon('list')}No linked race · Link race ${icon('arrow')}</button>` : '';
-  return `<div class="queue-item${!item.enabled ? ' disabled' : ''}" data-item="${e(item.id)}"><input type="checkbox" data-enable="${e(item.id)}" ${item.enabled ? 'checked' : ''} aria-label="Include ${title} in loop"><button class="queue-thumb" data-play="${e(item.id)}" aria-label="Play ${title}" ${!item.enabled ? 'disabled' : ''}>${thumb(item)}</button><div class="queue-title"><button data-play="${e(item.id)}" ${!item.enabled ? 'disabled' : ''} title="${title}">${title}</button><small>${item.kind === 'race' ? `REPLAY · ${bytes(item.bytes)}` : item.kind === 'ad' ? `SPONSOR${item.mock ? ' · MOCK AD' : item.mediaType === 'video' ? ' · VIDEO' : ` · ${item.seconds || 12}s`}` : item.mediaType === 'video' ? 'VIDEO BANNER' : `BANNER · ${item.seconds || 12}s`}</small>${link}</div><div class="queue-actions"><button class="icon-button" data-move="${e(item.id)}" data-direction="-1" aria-label="Move ${title} up">${icon('up')}</button><button class="icon-button" data-move="${e(item.id)}" data-direction="1" aria-label="Move ${title} down">${icon('down')}</button></div><button class="icon-button" data-edit="${e(item.id)}" aria-label="Edit ${title}">${icon('edit')}</button><button class="icon-button danger" data-remove="${e(item.id)}" aria-label="Remove ${title}" title="Remove ${title}" ${state.busy ? 'disabled' : ''}>${icon('trash')}</button></div>`;
+  return `<div class="queue-item${!item.enabled ? ' disabled' : ''}" data-item="${e(item.id)}"><input type="checkbox" data-enable="${e(item.id)}" ${item.enabled ? 'checked' : ''} aria-label="Include ${title} in loop"><button class="queue-thumb" data-play="${e(item.id)}" aria-label="Play ${title}" ${!item.enabled ? 'disabled' : ''}>${thumb(item)}</button><div class="queue-title"><button data-play="${e(item.id)}" ${!item.enabled ? 'disabled' : ''} title="${title}">${title}</button><small>${mediaSummary(item)}</small>${link}</div><div class="queue-actions"><button class="icon-button" data-move="${e(item.id)}" data-direction="-1" aria-label="Move ${title} up">${icon('up')}</button><button class="icon-button" data-move="${e(item.id)}" data-direction="1" aria-label="Move ${title} down">${icon('down')}</button></div><button class="icon-button" data-edit="${e(item.id)}" aria-label="Edit ${title}">${icon('edit')}</button><button class="icon-button danger" data-remove="${e(item.id)}" aria-label="Remove ${title}" title="Remove ${title}" ${state.busy ? 'disabled' : ''}>${icon('trash')}</button></div>`;
 }
 function renderPlaylist() {
   const items = state.meeting.items.filter(item => item.kind !== 'ad'); const races = items.filter(item => item.kind === 'race');
@@ -67,7 +78,7 @@ function renderCreative() {
     $(`#${prefix}-count`).textContent = items.length;
     $(`#${prefix}-grid`).innerHTML = items.map(item => {
       const order = kind === 'ad' ? `<span class="creative-order"><button class="icon-button" data-move="${e(item.id)}" data-direction="-1" aria-label="Move ${e(item.title)} up">${icon('up')}</button><button class="icon-button" data-move="${e(item.id)}" data-direction="1" aria-label="Move ${e(item.title)} down">${icon('down')}</button></span>` : '';
-      return `<article class="panel creative-card" data-item="${e(item.id)}">${item.mediaType === 'video' ? `<video src="${e(item.url)}" preload="metadata" muted></video>` : `<img src="${e(item.url)}" alt="${e(item.title)}">`}<div class="card-body"><h2>${e(item.title)}</h2><div class="concept-tag">${item.mock ? 'MOCK AD · CONCEPT ONLY' : kind === 'ad' ? 'SPONSOR CONTENT' : 'TRACK BANNER'}</div><div class="creative-meta"><span>${item.mediaType === 'video' ? 'Video' : `${item.seconds || 12} seconds`}</span><button class="text-button" data-edit="${e(item.id)}">${icon('edit')}Edit</button><label><input class="switch" type="checkbox" data-enable="${e(item.id)}" ${item.enabled ? 'checked' : ''} aria-label="Include ${e(item.title)} in loop"></label></div><div class="creative-actions"><button class="text-button" data-play="${e(item.id)}" ${!item.enabled ? 'disabled' : ''}>${icon('play')}Play on display</button>${order}<button class="text-button danger" data-remove="${e(item.id)}" aria-label="Remove ${e(item.title)}" ${state.busy ? 'disabled' : ''}>${icon('trash')}Remove</button></div></div></article>`;
+      return `<article class="panel creative-card" data-item="${e(item.id)}">${item.mediaType === 'video' ? `<video src="${e(item.url)}" preload="metadata" muted></video>` : `<img src="${e(item.url)}" alt="${e(item.title)}">`}<div class="card-body"><h2>${e(item.title)}</h2><div class="concept-tag">${item.mock ? 'MOCK AD · CONCEPT ONLY' : kind === 'ad' ? 'SPONSOR CONTENT' : 'TRACK BANNER'}</div><div class="creative-meta"><span>${item.mediaType === 'video' ? 'Video · ' : ''}${mediaSeconds(state.meeting,item)} seconds${item.seconds==null?' · default':''}${mediaIndicators(item)}</span><button class="text-button" data-edit="${e(item.id)}">${icon('edit')}Edit</button><label><input class="switch" type="checkbox" data-enable="${e(item.id)}" ${item.enabled ? 'checked' : ''} aria-label="Include ${e(item.title)} in loop"></label></div><div class="creative-actions"><button class="text-button" data-play="${e(item.id)}" ${!item.enabled ? 'disabled' : ''}>${icon('play')}Play on display</button>${order}<button class="text-button danger" data-remove="${e(item.id)}" aria-label="Remove ${e(item.title)}" ${state.busy ? 'disabled' : ''}>${icon('trash')}Remove</button></div></div></article>`;
     }).join('') || `<p class="queue-empty">${empty} Add an image or video to get started.</p>`;
   }
   updateCurrentRow();
@@ -88,6 +99,9 @@ function setState(next) {
   $('#confirm-remove').disabled = state.busy || removing;
   $('#storage-root').value = state.root;
   $('#demo-notice').hidden = desktop;
+  const hold = $('[data-command="holding"]');
+  hold.disabled = !enabledBanner(state.meeting);
+  hold.title = hold.disabled ? 'Enable a banner to hold it on the display.' : 'Hold the first enabled banner on the display.';
   for (const [key, value] of Object.entries(state.meeting.settings)) { const input = $(`#setting-${key}`); if (input && document.activeElement !== input) { if (input.type === 'checkbox') input.checked = value; else input.value = value; } }
   registration.update(next);
   renderPlaylist(); renderCreative(); renderDisplays(); renderDrives();
@@ -105,12 +119,13 @@ function updatePlayback(value) {
   $('#playing-mode').textContent = value.blackout ? 'BLACKOUT · PLAYBACK PAUSED' : value.mode === 'holding' ? 'HOLDING · PRESS N TO RESUME THE LOOP' : value.paused ? 'PAUSED' : value.phase === 'instant-replay' ? `INSTANT REPLAY · MOMENT ${value.replayIndex+1} OF ${value.replayCount}` : value.transitioning ? 'STARTING REPLAY' : value.phase === 'racecard' ? 'RACE CARD · REPLAY UP NEXT' : value.phase === 'results' ? 'RACE RESULTS · FINISHING ORDER' : 'NOW PLAYING';
   $('#media-kind').textContent = value.phase === 'racecard' ? 'RACE CARD' : value.phase === 'results' ? 'RACE RESULTS' : value.phase === 'instant-replay' ? 'INSTANT REPLAY' : value.kind === 'race' ? 'RACE REPLAY' : value.kind === 'ad' ? 'SPONSOR AD' : 'HOLDING BANNER';
   const race=linkedRace(state.meeting,item),linked=Boolean(race&&item?.mediaType==='video');
+  const resultWarning = linked ? resultWarnings(race,{hasVideo:true}).message : '';
   const moments = replaySections(item, ['media','instant-replay'].includes(value.phase) && value.duration ? value.duration : Infinity);
   $('#seek').style.setProperty('--replay-track',replayTrackGradient(['media','instant-replay'].includes(value.phase) ? moments : [],value.duration));
   for(const button of document.querySelectorAll('[data-jump]')){
     button.disabled=button.dataset.jump==='instant-replay' ? !moments.length : !linked || (button.dataset.jump==='results'&&!raceResults(race).hasTimes);
     button.setAttribute('aria-current',String(linked&&button.dataset.jump===(value.phase==='media'?'replay':value.phase)));
-    button.title=button.dataset.jump==='instant-replay' ? moments.length?'Jump to instant slow-motion replays':'Mark replay moments in Edit media to enable slow-motion replays.' : !linked?'Play a linked race recording to jump between its sections.':button.disabled?'No finish times recorded yet.':`Jump to ${button.textContent.trim().toLowerCase()}`;
+    button.title=button.dataset.jump==='instant-replay' ? moments.length?'Jump to instant slow-motion replays':'Mark replay moments in Edit media to enable slow-motion replays.' : !linked?'Play a linked race recording to jump between its sections.':button.disabled?(resultWarning || 'No finish times recorded yet.'):`Jump to ${button.textContent.trim().toLowerCase()}`;
   }
   const momentRow = $('#instant-replay-toggles'), signature = JSON.stringify([item?.id,moments]);
   if (momentRow.dataset.signature !== signature) {
@@ -259,7 +274,7 @@ document.addEventListener('change', event => {
   safely(async () => {
     if (input.dataset.enable) setState(await api.patchItem(input.dataset.enable, { enabled: input.checked }));
     if (input.dataset.file) { const item = directoryEntries.find(x => x.path === input.dataset.file); if (input.checked && item) selection.set(item.path, item); else selection.delete(input.dataset.file); selectionSummary(); }
-    if (input.id.startsWith('setting-')) { const key = input.id.slice(8); const value = input.type === 'checkbox' ? input.checked : Number(input.value); setState(await api.patchSettings({ [key]: value })); }
+    if (input.id.startsWith('setting-')) { if (!input.reportValidity() || input.value === '') return; const key = input.id.slice(8); const value = input.type === 'checkbox' ? input.checked : input.type === 'color' ? input.value : Number(input.value); setState(await api.patchSettings({ [key]: value })); }
   });
 });
 $('#meeting-date').addEventListener('change', () => safely(async () => { const oldDate = state.meeting.date; try { setState(await api.openMeeting($('#meeting-date').value)); } catch (error) { $('#meeting-date').value = oldDate; throw error; } }));

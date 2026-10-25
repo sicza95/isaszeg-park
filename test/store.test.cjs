@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
-const { MeetingStore, validDate, localDate } = require('../src/main/store.cjs');
+const { MeetingStore, validDate, localDate, atomicJSON } = require('../src/main/store.cjs');
 async function fixture(t) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'isaszeg-test-'));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
@@ -13,16 +13,54 @@ async function fixture(t) {
   return { dir, source, store, clip };
 }
 
+test('settings, inherited durations and sponsor overrides persist across restart', async t => {
+  const {store,clip}=await fixture(t),date='2026-10-25';
+  await store.patchSettings(date,{sponsorSeconds:21,bannerSeconds:18,resultsSeconds:30,sponsorBackground:'#112233',sponsorForeground:'#ddeeff'});
+  const imported=await store.importFiles(date,[await clip('sponsor.png','sponsor image')],'ad');
+  const id=imported.results[0].item.id;
+  assert.equal(imported.results[0].item.seconds,undefined);
+  await store.patchItem(date,id,{seconds:7,sponsorBackground:'#445566'});
+  let reopened=await new MeetingStore(store.root).load(date);
+  assert.equal(reopened.settings.resultsSeconds,30);
+  assert.equal(reopened.settings.sponsorSeconds,21);
+  assert.equal(reopened.settings.bannerSeconds,18);
+  assert.equal(reopened.settings.sponsorForeground,'#ddeeff');
+  assert.equal(reopened.items.find(item=>item.id===id).sponsorBackground,'#445566');
+  assert.equal(reopened.items.find(item=>item.id===id).seconds,7);
+  await store.patchItem(date,id,{seconds:null,sponsorBackground:null});
+  reopened=await new MeetingStore(store.root).load(date);
+  assert.equal(reopened.items.find(item=>item.id===id).seconds,undefined);
+  assert.equal(reopened.items.find(item=>item.id===id).sponsorBackground,undefined);
+  const before=await fs.readFile(path.join(store.folder(date),'meeting.json'),'utf8');
+  await assert.rejects(store.patchSettings(date,{sponsorForeground:'bad'}),/valid footer color/);
+  assert.equal(await fs.readFile(path.join(store.folder(date),'meeting.json'),'utf8'),before);
+});
+
+test('atomic saves retry transient Windows locks and retain the original on permanent failure', {skip:process.platform!=='win32'}, async t => {
+  const {dir}=await fixture(t),file=path.join(dir,'settings.json');
+  await atomicJSON(file,{value:1});
+  const rename=fs.rename;let attempts=0;
+  const mocked=t.mock.method(fs,'rename',async(...args)=>{
+    if(++attempts<3)throw Object.assign(new Error('Temporary sharing violation'),{code:'EPERM'});
+    return rename(...args);
+  });
+  await atomicJSON(file,{value:2});assert.equal(attempts,3);
+  mocked.mock.mockImplementation(async()=>{throw Object.assign(new Error('Write failed'),{code:'EIO'});});
+  await assert.rejects(atomicJSON(file,{value:3}),/Write failed/);
+  assert.equal(JSON.parse(await fs.readFile(file,'utf8')).value,2);
+  assert.deepEqual((await fs.readdir(dir)).filter(name=>name.endsWith('.tmp')),[]);
+});
+
 test('media edits persist replay moments and runner times atomically across restart',async t=>{
   const {store,clip}=await fixture(t),date='2026-10-24';
   const {referenceMeeting}=await import('../src/shared/reference-219.mjs');
   await store.saveRegistration(date,referenceMeeting);
   const result=await store.importFiles(date,[await clip('race.mp4','replay moments')],'race',1),item=result.results[0].item;
-  const race=referenceMeeting.races[0],entries=race.entries.map(entry=>({trap:entry.trap,status:'FIN',time:'20.12',split:'5.40'}));
+  const race=referenceMeeting.races[0],entries=race.entries.map((entry,index)=>({trap:entry.trap,status:'FIN',time:(20.12+index*.001).toFixed(3),split:'5.40'}));
   await store.patchItem(date,item.id,{replaySections:[{id:'bend',start:1,end:3,rate:.25,label:'Bend'}],runnerResults:{raceId:race.id,entries}});
   const reopened=await new MeetingStore(store.root).load(date);
   assert.equal(reopened.items.find(value=>value.id===item.id).replaySections[0].rate,.25);
-  assert.equal(reopened.registration.races[0].entries[0].time,'20.12');
+  assert.equal(reopened.registration.races[0].entries[0].time,'20.120');
   await store.patchItem(date,item.id,{replayRate:{id:'bend',rate:1}});
   assert.equal((await new MeetingStore(store.root).load(date)).items.find(value=>value.id===item.id).replaySections[0].rate,1);
   entries[0].time='invalid';await assert.rejects(store.patchItem(date,item.id,{title:'Invalid',replaySections:[],runnerResults:{raceId:race.id,entries}}));
@@ -37,6 +75,7 @@ test('verified import preserves card originals, numbers clips and survives resta
   assert.equal(race.title, 'Race 01'); assert.equal(race.sha256.length, 64);
   assert.deepEqual(await fs.readFile(original), await fs.readFile(path.join(store.folder('2026-10-24'), race.file)));
   const fresh = new MeetingStore(store.root); assert.equal((await fresh.load('2026-10-24')).items.at(-1).id, race.id);
+  assert.equal((await fresh.load('2026-10-24')).items.at(-1).resultsPending,true,'Skipping setup keeps the review pending after restart');
   assert.equal((await fs.readdir(store.folder('2026-10-24'))).some(x => x.endsWith('.part')), false);
 });
 test('content duplicates are skipped even with renamed source; sequence does not advance', async t => {

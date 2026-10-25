@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { raceResults, finishTime, finishingOrder, entryStatus, RESULTS_ROW_SECONDS } from '../src/shared/race-results.mjs';
+import { raceResults, finishTime, formatResultTime, finishingOrder, entryStatus, resultWarnings, assertUniqueFinishTimes, RESULTS_ROW_SECONDS } from '../src/shared/race-results.mjs';
 import { racePresentation } from '../src/renderer/race-presentation.mjs';
 
 const runner = (trap, finish, time = '', extra = {}) => ({ trap, dogId: `dog${trap}`, finish, time, ...extra });
@@ -37,14 +37,30 @@ test('untimed runners stay unplaced even if legacy data assigned a finish positi
   assert.ok(!html.includes('0—'));
 });
 
-test('equal times share a place and explicit non-finishing statuses never rank',()=>{
+test('identical finish times warn and cannot receive places or play results',()=>{
   const entries=[runner(1,'','29.10',{status:'FIN'}),runner(2,'','29.10',{status:'FIN'}),runner(3,'','29.20',{status:'FIN'}),runner(4,'','28.00',{status:'ENTERED'}),runner(5,'','27.00',{status:'DQ'})];
-  assert.deepEqual([...finishingOrder({entries}).places],[[1,1],[2,1],[3,3]]);
+  assert.deepEqual([...finishingOrder({entries}).places],[]);
+  assert.match(resultWarnings({entries}).message,/Identical finish times for traps 1, 2/);
+  assert.throws(()=>assertUniqueFinishTimes({number:1,entries}),/identical finish times/);
+  assert.equal(raceResults({entries}).hasTimes,false);
+  assert.equal(presentation(entries),'');
   assert.equal(entryStatus(runner(1,'NR')),'NR');
   assert.equal(entryStatus(runner(1,'','29.10')),'FIN');
   assert.equal(entryStatus({}),'EMPTY');
   assert.equal(entryStatus({status:'FIN'}),'EMPTY');
   assert.equal(entryStatus({dogId:'dog',status:'EMPTY'}),'ENTERED');
+});
+
+test('thousandths decide places while displayed times floor to hundredths without rounding errors',()=>{
+  const entries=[runner(1,'','16.819',{status:'FIN'}),runner(2,'','16.811',{status:'FIN'})];
+  assert.deepEqual([...finishingOrder({entries}).places],[[2,1],[1,2]]);
+  const html=presentation(entries);
+  assert.ok(html.indexOf('data-trap="2"')<html.indexOf('data-trap="1"'));
+  assert.equal((html.match(/<strong>16.81<\/strong>/g)||[]).length,2);
+  assert.doesNotMatch(html,/16\.819|16\.811|16\.82/);
+  for(const [input,expected] of [['16.81','16.81'],['19.999','19.99'],['1.019','1.01'],['29','29.00'],['29.1','29.10'],['0.001','0.00'],['0.999','0.99']])assert.equal(formatResultTime(input),expected);
+  for(const value of ['',0,-1,'NaN',Infinity])assert.equal(formatResultTime(value),'');
+  assert.throws(()=>assertUniqueFinishTimes({number:1,entries:[runner(1,'','29.10'),runner(2,'','29.100')]}),/identical/);
 });
 
 test('outro requires a valid finish time and labels estimated times clearly', () => {

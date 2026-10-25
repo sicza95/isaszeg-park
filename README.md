@@ -75,6 +75,16 @@ Two generated sponsor mockups are included: Connolly's RED MILLS and PEDRO, base
 
 Track colors supplied by the operator are recorded in [docs/ART-DIRECTION.md](docs/ART-DIRECTION.md) and `src/shared/traps.mjs`. **Race numbers and trap numbers are different.** Trap 3 is a white jacket with black 3; trap 6 is black-and-white horizontal stripes with red 6.
 
+Settings are grouped into **App**, **Videos**, **Banners** and **Sponsors**. Videos includes the time to hold the completed race results before their exit transition. Banners and Sponsors have separate default display durations. A blank duration in Edit media follows the relevant setting, including later changes; enter a duration to override it, or clear it to return to the default. Sponsor and banner videos end at that duration or their natural end, whichever comes first. Existing saved durations remain explicit overrides.
+
+Sponsors also has default footer background and foreground colors. Open a sponsor in Edit media to preview and override either color, or select **Use setting default** to inherit it. Each enabled sponsor’s display duration also controls its slot in the footer rotation. Hold banner and its **B** shortcut are available when a banner is enabled.
+
+Small icons beside recordings indicate marked replay moments or incomplete results; hover for details. Both editors show summary warnings for finished dogs without actual finish times, races with no finished dogs, and dogs still marked Entered when a race video is present. Clearing Time warns even if an estimated time remains. Status, Split and Time share a header row and equally tall inputs. Starting a finish time in an empty Time field marks that dog as Finished; entering a split leaves its status unchanged. The opening race card shows trap, dog name, country, owner/trainer, age at the meeting date, and weight, with dashes for missing age or weight.
+
+Saving the setup for a newly imported race video asks for confirmation before changing untimed dogs still marked Entered or Finished to Non-runner. **Okay** applies those changes and saves; **Cancel** or Escape returns to the unchanged draft so you can correct times or statuses. Explicit Non-runner, Did not finish and Disqualified statuses are preserved. Skipping setup keeps that review pending when you reopen the video.
+
+Finish times accept up to three decimal places and use that precision to determine places. Results show two decimal places, floored: `20.121` and `20.129` both display as `20.12`, with separate places. Identical finish times are invalid and must be corrected before saving that race. Existing rounded ties in historical imports are flagged for review; they remain available without blocking edits to other races, and results wait until the tie is resolved.
+
 ## Reliability and limits
 
 - Imports are serialized, staged to `.part` files, hashed with SHA-256, verified against the written copy and added to the manifest only after success. Identical content is skipped even if renamed. Failed imports do not enter the playlist; source files remain untouched.

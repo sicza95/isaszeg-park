@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { replaySections, validateReplaySections, replayTrackGradient } from '../src/shared/instant-replays.mjs';
 import { applyMediaEdit } from '../src/shared/media-edit.mjs';
 import { referenceMeeting } from '../src/shared/reference-219.mjs';
+import { unresolvedUntimedRunners } from '../src/shared/race-results.mjs';
 
 const moment = (id,start,end,rate=.5) => ({id,start,end,rate,label:id});
 test('moments are validated, ordered and clipped to playable footage',()=>{
@@ -33,11 +34,44 @@ test('changing a replay rate preserves other moments and rejects missing or inva
 test('media moments, link, statuses and times update together; invalid results commit nothing',()=>{
   const registration=structuredClone(referenceMeeting), race=registration.races[0];
   const meeting={registration,items:[{id:'clip',kind:'race',mediaType:'video',raceId:race.id,title:'Race 01'}]};
-  const entries=race.entries.map(entry=>({trap:entry.trap,status:'FIN',time:'19.24',split:'5.20'}));
+  const entries=race.entries.map((entry,index)=>({trap:entry.trap,status:'FIN',time:(19.24+index*.001).toFixed(3),split:'5.20'}));
   applyMediaEdit(meeting,'clip',{replaySections:[moment('bend',1,3)],runnerResults:{raceId:race.id,entries}});
-  assert.equal(meeting.items[0].replaySections.length,1);assert.equal(meeting.registration.races[0].entries[0].time,'19.24');
+  assert.equal(meeting.items[0].replaySections.length,1);assert.equal(meeting.registration.races[0].entries[0].time,'19.240');
   const saved=structuredClone(meeting);
   entries[0].time='-2';assert.throws(()=>applyMediaEdit(meeting,'clip',{title:'Do not save',replaySections:[],runnerResults:{raceId:race.id,entries}}));
   assert.deepEqual(meeting,saved);
   assert.throws(()=>applyMediaEdit(meeting,'clip',{runnerResults:{raceId:'another-race',entries:[]}}));
+});
+
+test('new videos require confirmation for untimed unresolved dogs and preserve explicit result statuses',()=>{
+  const registration=structuredClone(referenceMeeting),race=registration.races[0];
+  const statuses=['FIN','ENTERED','DNF','DQ','NR','FIN'];
+  race.entries.forEach((entry,index)=>{entry.status=statuses[index];entry.time=index===5?'20.10':'';entry.estimatedTime='20.20';});
+  const meeting={registration,items:[{id:'clip',kind:'race',mediaType:'video',raceId:race.id,title:'Race 01',resultsPending:true}]};
+  const entries=race.entries.map(entry=>({trap:entry.trap,status:entry.status,time:entry.time,split:entry.split}));
+  const patch={title:'Edited video',runnerResults:{raceId:race.id,entries}};
+  const before=structuredClone(meeting),traps=race.entries.slice(0,2).map(entry=>entry.trap);
+  assert.deepEqual(unresolvedUntimedRunners(race).map(entry=>entry.trap),traps);
+  assert.throws(()=>applyMediaEdit(meeting,'clip',patch),/Confirm the dogs/);
+  assert.deepEqual(meeting,before);
+  assert.throws(()=>applyMediaEdit(meeting,'clip',{...patch,confirmNonRunnerTraps:[traps[0]]}),/Confirm the dogs/);
+  assert.deepEqual(meeting,before);
+  applyMediaEdit(meeting,'clip',{...patch,confirmNonRunnerTraps:traps});
+  assert.deepEqual(meeting.registration.races[0].entries.map(entry=>entry.status),['NR','NR','DNF','DQ','NR','FIN']);
+  assert.equal(meeting.items[0].resultsPending,undefined);
+  assert.equal(meeting.items[0].title,'Edited video');
+});
+
+test('reviewed videos keep edited statuses and unlinked new videos retain their pending review',()=>{
+  const registration=structuredClone(referenceMeeting),race=registration.races[0];
+  const meeting={registration,items:[{id:'clip',kind:'race',mediaType:'video',raceId:null,title:'Race 01',resultsPending:true}]};
+  applyMediaEdit(meeting,'clip',{title:'Unlinked video'});
+  assert.equal(meeting.items[0].resultsPending,true);
+  meeting.items[0].raceId=race.id;
+  const entries=race.entries.map(entry=>({trap:entry.trap,status:'FIN',time:entry.time,split:entry.split}));
+  applyMediaEdit(meeting,'clip',{runnerResults:{raceId:race.id,entries}});
+  assert.equal(meeting.items[0].resultsPending,undefined);
+  entries[0].time='';
+  applyMediaEdit(meeting,'clip',{runnerResults:{raceId:race.id,entries}});
+  assert.equal(meeting.registration.races[0].entries[0].status,'FIN');
 });

@@ -1,14 +1,17 @@
 import { escapeHTML as e, icon } from './icons.mjs';
 import { linkedRace, replayTitle } from '../shared/race-links.mjs';
 import { replaySections, replayTime, validateReplaySections, replayTrackGradient } from '../shared/instant-replays.mjs';
-import { statusField, attachStatusFields, setStatusField } from './runner-status.mjs';
+import { statusField, attachStatusFields, finishOnTimeInput, showResultWarnings } from './runner-status.mjs';
 import { trapBadge } from './trap-badge.mjs';
+import { mediaSeconds, sponsorColors } from '../shared/media-settings.mjs';
+import { unresolvedUntimedRunners } from '../shared/race-results.mjs';
 
 export function createMediaEditor({api, getState, setState, toast}) {
   const dialog = document.querySelector('#edit-dialog'), form = dialog.querySelector('form');
   const $ = selector => dialog.querySelector(selector), video = $('#edit-video'), timeline = $('#moment-timeline');
+  const confirmation = document.querySelector('#untimed-runners-dialog');
   let queue = [], index = 0, item, sections = [], selected, duration = 0, drag, previewing, saving = false, generation = 0, sampler;
-  let resultsRace, resultsDrafts = new Map();
+  let resultsRace, resultsDrafts = new Map(), pendingSave;
   const state = () => getState();
   const active = () => sections.find(section=>section.id===selected);
   const clamp = value => Math.max(0,Math.min(duration,value));
@@ -19,16 +22,27 @@ export function createMediaEditor({api, getState, setState, toast}) {
     if (!resultsRace) return;
     resultsDrafts.set(resultsRace,[...$('#media-runners').querySelectorAll('[data-runner]')].map(row=>({trap:Number(row.dataset.runner),status:row.querySelector('[name^=status-]').value,time:row.querySelector('[name^=time-]').value,split:row.querySelector('[name^=split-]').value})));
   }
+  function draftRace() {
+    const race = state().meeting.registration?.races.find(race=>race.id===resultsRace);
+    const entries = race?.entries.map(entry=>({...entry,...resultsDrafts.get(resultsRace)?.find(edit=>edit.trap===entry.trap)}));
+    return race && {...race, entries};
+  }
+  function refreshWarnings() {
+    captureResults();
+    showResultWarnings($('#media-runners'), draftRace(), $('#media-results-warning'),{hasVideo:item.kind==='race' && item.mediaType==='video'});
+  }
   function renderResults() {
     resultsRace = $('#edit-race').value;
     const registration = state().meeting.registration, race = registration?.races.find(race=>race.id===resultsRace);
     $('#media-results-help').hidden = Boolean(race?.entries.length);
     $('#media-results-help').textContent = race ? 'No dogs assigned to this race yet. Add them in Races & dogs.' : 'Link this video to a registered race to edit dog statuses and times here.';
     const drafts = resultsDrafts.get(resultsRace);
-    $('#media-runners').innerHTML = race?.entries.slice().sort((a,b)=>a.trap-b.trap).map(entry=>{
+    const rows = race?.entries.slice().sort((a,b)=>a.trap-b.trap).map(entry=>{
       const value = {...entry,...drafts?.find(draft=>draft.trap===entry.trap)}, dog = registration.dogs.find(dog=>dog.id===entry.dogId);
-      return `<div class="media-runner" data-runner="${entry.trap}">${trapBadge(entry.trap)}<strong>${e(dog?.name||'Unknown dog')}</strong>${statusField(entry.trap,value,'media-runner-status')}<label>Split (s)<input type="number" name="split-${entry.trap}" value="${e(value.split||'')}" min="0.01" step="0.01" aria-label="Split for trap ${entry.trap}"></label><label>Time (s)<input type="number" name="time-${entry.trap}" value="${e(value.time||'')}" min="0.01" step="0.01" aria-label="Time for trap ${entry.trap}"></label></div>`;
+      return `<div class="media-runner" data-runner="${entry.trap}">${trapBadge(entry.trap)}<strong>${e(dog?.name||'Unknown dog')}</strong>${statusField(entry.trap,value,'media-runner-status')}<input type="number" name="split-${entry.trap}" value="${e(value.split||'')}" min="0.01" step="0.01" aria-label="Split for trap ${entry.trap}"><input type="number" name="time-${entry.trap}" value="${e(value.time||'')}" min="0.001" step="0.001" aria-label="Time for trap ${entry.trap}"></div>`;
     }).join('') || '';
+    $('#media-runners').innerHTML = rows ? `<div class="media-runner-columns" aria-hidden="true"><span>TRAP</span><span>DOG</span><span>STATUS</span><span>SPLIT (s)</span><span>TIME (s)</span></div>${rows}` : '';
+    refreshWarnings();
   }
   function renderRanges() {
     $('#edit-video-seek').style.setProperty('--replay-track',replayTrackGradient(sections,duration));
@@ -103,7 +117,18 @@ export function createMediaEditor({api, getState, setState, toast}) {
     sections = replaySections(item);
     $('#edit-progress').hidden = queue.length<2; $('#edit-progress').textContent = `${index+1} of ${queue.length}`;
     $('#edit-source').textContent = item.originalName || replayTitle(state().meeting,item);
-    $('#edit-title').value = item.title; $('#edit-duration').value = item.seconds || 12; $('#edit-duration-label').hidden = item.mediaType==='video';
+    $('#edit-title').value = item.title; $('#edit-duration').value = item.seconds ?? ''; $('#edit-duration-label').hidden = item.kind==='race';
+    const defaultSeconds = mediaSeconds(state().meeting,{kind:item.kind});
+    $('#edit-duration').placeholder = `Default: ${defaultSeconds}`;
+    $('#edit-duration-help').textContent = `Leave empty to use Settings · ${item.kind==='ad'?'Sponsors':'Banners'} (${defaultSeconds} seconds).${item.mediaType==='video'?' Shorter videos end naturally.':''}`;
+    $('#edit-sponsor-colors').hidden = item.kind!=='ad';
+    const colors = sponsorColors(state().meeting,item);
+    for (const key of ['sponsorBackground', 'sponsorForeground']) {
+      $(`#default-${key}`).checked = !item[key];
+      $(`#edit-${key}`).value = colors[key];
+      $(`#edit-${key}`).disabled = !item[key];
+    }
+    updateFooterPreview();
     $('#edit-race-label').hidden = item.kind!=='race';
     const race = linkedRace(state().meeting,item);
     $('#edit-race').innerHTML = `<option value="">No linked race</option>${(state().meeting.registration?.races||[]).slice().sort((a,b)=>a.number-b.number).map(race=>`<option value="${e(race.id)}">Race ${String(race.number).padStart(2,'0')} · ${e(race.title)}</option>`).join('')}`;
@@ -125,13 +150,21 @@ export function createMediaEditor({api, getState, setState, toast}) {
   $('#edit-race').addEventListener('change',()=>{captureResults();renderResults();});
   attachStatusFields($('#media-runners'));
   $('#media-runners').addEventListener('input',event=>{
-    if(!event.target.name?.startsWith('time-'))return;
-    const row=event.target.closest('[data-runner]'), field=row.querySelector('.runner-status-field'), status=field.querySelector('input').value;
-    if(['ENTERED','FIN'].includes(status)){
-      const entry=state().meeting.registration.races.find(race=>race.id===resultsRace)?.entries.find(entry=>entry.trap===Number(row.dataset.runner));
-      setStatusField(field,event.target.value || entry?.estimatedTime ? 'FIN' : 'ENTERED');
-    }
+    finishOnTimeInput(event.target); refreshWarnings();
   });
+  $('#media-runners').addEventListener('change',refreshWarnings);
+  function updateFooterPreview() {
+    const defaults = sponsorColors(state().meeting);
+    for (const [key, property] of [['sponsorBackground','backgroundColor'], ['sponsorForeground','color']]) {
+      const inherit = $(`#default-${key}`).checked;
+      $(`#edit-${key}`).disabled = inherit;
+      if (inherit) $(`#edit-${key}`).value = defaults[key];
+      $('#edit-footer-preview').style[property] = $(`#edit-${key}`).value;
+    }
+    $('#edit-footer-preview strong').textContent = $('#edit-title').value;
+  }
+  $('#edit-sponsor-colors').addEventListener('input',updateFooterPreview);
+  $('#edit-title').addEventListener('input',updateFooterPreview);
   video.addEventListener('loadedmetadata',()=>{
     duration=Number.isFinite(video.duration)?video.duration:0;
     sections=replaySections({...item,replaySections:sections},duration);
@@ -201,23 +234,44 @@ export function createMediaEditor({api, getState, setState, toast}) {
     previewing={...section};video.currentTime=section.start;video.playbackRate=section.rate;$('#preview-moment').textContent='Stop preview';video.play().catch(error=>{$('#edit-error').textContent=error.message;stopPreview();});
   });
   $('#edit-skip').addEventListener('click',()=>{if(!saving)next();});
+  async function savePatch(patch) {
+    if(saving)return;
+    saving=true;stopPreview();$('#edit-error').textContent='';
+    const controls=[...dialog.querySelectorAll('button,input,select')], disabled=controls.map(input=>input.disabled);controls.forEach(input=>{input.disabled=true;});
+    let saved=false;
+    try {setState(await api.patchItem(item.id,patch));toast('Media and race details saved.');saved=true;}
+    catch(error){$('#edit-error').textContent=error.message||String(error);}
+    finally {controls.forEach((input,i)=>{input.disabled=disabled[i];});saving=false;}
+    if(saved)next();
+  }
   form.addEventListener('submit',async event=>{
-    event.preventDefault();if(saving)return;
-    const patch={title:$('#edit-title').value,seconds:Number($('#edit-duration').value)};
+    event.preventDefault();if(saving || confirmation.open)return;
+    const patch={title:$('#edit-title').value};
+    if (item.kind !== 'race') patch.seconds = $('#edit-duration').value === '' ? null : Number($('#edit-duration').value);
+    if (item.kind === 'ad') for (const key of ['sponsorBackground','sponsorForeground']) patch[key] = $(`#default-${key}`).checked ? null : $(`#edit-${key}`).value;
     try {
       if(item.kind==='race'){
         if($('#edit-race').value!==(linkedRace(state().meeting,item)?.id||''))patch.raceId=$('#edit-race').value||null;
         if(item.mediaType==='video')patch.replaySections=validateReplaySections(sections);
         captureResults();if(resultsRace)patch.runnerResults={raceId:resultsRace,entries:resultsDrafts.get(resultsRace)};
       }
-      saving=true;stopPreview();$('#edit-error').textContent='';
-      const controls=[...dialog.querySelectorAll('button,input,select')], disabled=controls.map(input=>input.disabled);controls.forEach(input=>{input.disabled=true;});
-      try {setState(await api.patchItem(item.id,patch));toast('Media and race details saved.');}
-      finally {controls.forEach((input,i)=>{input.disabled=disabled[i];});saving=false;}
-      next();
+      const unresolved = item.resultsPending && patch.runnerResults ? unresolvedUntimedRunners(draftRace()) : [];
+      if (unresolved.length) {
+        pendingSave={id:item.id,patch:{...patch,confirmNonRunnerTraps:unresolved.map(entry=>entry.trap)}};
+        const dogs=state().meeting.registration.dogs;
+        confirmation.querySelector('#untimed-runners-list').textContent=unresolved.slice().sort((a,b)=>a.trap-b.trap).map(entry=>`Trap ${entry.trap} · ${dogs.find(dog=>dog.id===entry.dogId)?.name || 'Unknown dog'}`).join('\n');
+        confirmation.showModal();return;
+      }
+      await savePatch(patch);
     }catch(error){$('#edit-error').textContent=error.message||String(error);saving=false;}
   });
+  confirmation.querySelector('#confirm-untimed-runners').addEventListener('click',()=>{
+    const pending=pendingSave;pendingSave=null;confirmation.close();
+    if(pending?.id===item.id)savePatch(pending.patch);
+  });
+  confirmation.querySelector('#cancel-untimed-runners').addEventListener('click',()=>{pendingSave=null;confirmation.close();});
+  confirmation.addEventListener('close',()=>{if(!confirmation.open)pendingSave=null;});
   dialog.addEventListener('cancel',event=>{if(saving)event.preventDefault();});
-  dialog.addEventListener('close',()=>{if(!dialog.open){clearMedia();queue=[];}});
+  dialog.addEventListener('close',()=>{if(!dialog.open){pendingSave=null;if(confirmation.open)confirmation.close();clearMedia();queue=[];}});
   return {open(ids){queue=Array.isArray(ids)?ids:[ids];index=0;showCurrent();}};
 }

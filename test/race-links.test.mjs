@@ -34,11 +34,16 @@ test('all selectable countries ship an offline SVG and unknown codes render safe
   assert.doesNotMatch(flag('../../evil'),/<img/);
 });
 
-test('racecard escapes saved text and includes entries, conditions and results', () => {
+test('opening racecard escapes text and limits runner details to people, age and weight', () => {
   const race={number:1,title:'Trophy <script>',grade:'S3',distance:275,type:'Oval',breed:'Greyhound',entries:[{trap:1,dogId:'dog',weight:'31.5',finish:'1',time:'16.20',split:'3.4',remarks:'Clear run'}]};
-  const meeting={date:'2026-10-24',registration:{title:'Derby',track:'Isaszeg Park',dogs:[{id:'dog',name:'Fast & free',country:'HU',owner:'Owner',trainer:'Trainer',preference:'W'}]}};
+  const meeting={date:'2026-10-24',registration:{title:'Derby',track:'Isaszeg Park',dogs:[{id:'dog',name:'Fast & free',country:'HU',owner:'Owner',trainer:'Trainer',birth:'2024-06',preference:'W'}]}};
   const html=racePresentation(meeting,race);
-  for(const text of ['Trophy &lt;script&gt;','275 m','Greyhound','Oval','Fast &amp; free','hu.svg','31.5 kg','Finish 1','16.20 s','Split 3.4 s','Clear run','Owner','Trainer']) assert.ok(html.includes(text),text);
+  const card=html.slice(0,html.indexOf('<header class="replay-race-details"'));
+  for(const text of ['Trophy &lt;script&gt;','275 m','Greyhound','Oval','Fast &amp; free','hu.svg','31.5 kg','2y 4m','Owner','Trainer']) assert.ok(card.includes(text),text);
+  for(const text of ['Finish 1','16.20','Split 3.4','Clear run','Run W']) assert.ok(!card.includes(text),text);
+  assert.equal((card.match(/class="broadcast-age"/g)||[]).length,6);
+  assert.equal((card.match(/class="broadcast-weight"/g)||[]).length,6);
+  assert.match(card,/aria-label="Age">-<\/span>/);
   assert.equal((html.match(/class="broadcast-entry/g)||[]).length,6);
   const overlay=html.slice(html.indexOf('<div class="replay-details"'),html.indexOf('<div class="results-card'));
   for(const text of ['Fast &amp; free','hu.svg','Owner / Trainer','broadcast-trap-1']) assert.ok(overlay.includes(text),text);
