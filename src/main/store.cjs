@@ -142,7 +142,8 @@ class MeetingStore {
           const after = await fs.stat(source);
           if (before.size !== after.size || before.mtimeMs !== after.mtimeMs || bytes !== before.size) throw new Error('Source changed during copying. Wait for recording to finish, then try again.');
           const digest = hash.digest('hex');
-          if (data.items.some(x => x.sha256 === digest)) { results.push({ source: path.basename(source), status: 'duplicate' }); continue; }
+          const duplicate = data.items.find(x => x.sha256 === digest);
+          if (duplicate) { results.push({ source: path.basename(source), status: 'duplicate', item: duplicate }); continue; }
           progress('verifying');
           if (await sha256(temp) !== digest) throw new Error('Copy verification failed. Please try again.');
           while (used.has(number)) number++;

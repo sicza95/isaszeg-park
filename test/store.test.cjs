@@ -28,6 +28,8 @@ test('content duplicates are skipped even with renamed source; sequence does not
   const one = await clip('one.mp4', 'same clip'); const two = await clip('renamed.mp4', 'same clip'); const three = await clip('new.mp4', 'new clip');
   const result = await store.importFiles('2026-10-24', [one, two, three]);
   assert.deepEqual(result.results.map(x => x.status), ['imported', 'duplicate', 'imported']);
+  assert.equal(result.results[1].item.id, result.results[0].item.id, 'A duplicate identifies the existing recording');
+  assert.equal(result.results[1].item.raceNumber, 1);
   assert.deepEqual(result.meeting.items.filter(x => x.kind === 'race').map(x => x.raceNumber), [1, 2]);
 });
 test('failed files do not enter playlist or prevent later clips importing', async t => {

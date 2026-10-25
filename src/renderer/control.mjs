@@ -126,18 +126,29 @@ async function importSelected() {
   const number = Number($('#race-number').value); const kind = $('#import-kind').value;
   if (kind === 'race' && (!Number.isInteger(number) || number < 1 || number > 9999)) { toast('Choose a race number between 1 and 9999.', true); return; }
   importing = true;
-  $('#import-dialog').close();
   $('#import-results').textContent = ''; $('#import-progress').hidden = false;
   document.querySelectorAll('#import-dialog button,#import-dialog input,#import-dialog select').forEach(input => { input.disabled = true; });
   try {
     const result = await api.importFiles([...selection.keys()], kind, number);
     setState(await api.init());
     const added = result.results.filter(x => x.status === 'imported').length;
-    $('#import-results').textContent = result.results.map(x => `${x.status === 'imported' ? '✓' : x.status === 'duplicate' ? '↪' : '×'} ${x.source}: ${x.status === 'imported' ? 'added to the loop' : x.status === 'duplicate' ? 'already imported; skipped' : x.message}`).join('\n');
-    if (added) toast(`${added} file${added === 1 ? '' : 's'} added. The current replay keeps playing.`);
-    selection.clear(); selectionSummary();
+    $('#import-results').textContent = result.results.map(result => {
+      if (result.status === 'imported') return `✓ ${result.source}: added to the loop`;
+      if (result.status === 'duplicate') {
+        const existing = result.item ? ` as ${replayTitle(state.meeting, result.item)}` : '';
+        return `↪ ${result.source}: already imported${existing}; skipped`;
+      }
+      return `× ${result.source}: ${result.message}`;
+    }).join('\n') || 'No files were imported. Select files and try again.';
+    if (added && added === result.results.length) {
+      $('#import-dialog').close();
+      toast(`${added} file${added === 1 ? '' : 's'} added. The current replay keeps playing.`);
+    }
+  } catch (error) {
+    $('#import-results').textContent = error.message || String(error);
   } finally {
     importing = false; $('#import-progress').hidden = true;
+    selection.clear(); selectionSummary();
     document.querySelectorAll('#import-dialog button,#import-dialog input,#import-dialog select').forEach(input => { input.disabled = false; });
     $('#parent-folder').disabled = !parentDirectory; $('#confirm-import').disabled = true;
     $('#file-list').querySelectorAll('input').forEach(input => { input.checked = false; });

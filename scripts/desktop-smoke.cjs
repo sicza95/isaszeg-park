@@ -10,6 +10,7 @@ async function run() {
   await fs.writeFile(path.join(card, 'camera-001.mp4'), fixture);
   await fs.writeFile(path.join(card, 'camera-002.mp4'), Buffer.concat([fixture, Buffer.from([1])]));
   await fs.writeFile(path.join(card, 'renamed-duplicate.mp4'), fixture);
+  await fs.writeFile(path.join(card, 'empty.mp4'), '');
   await fs.copyFile(path.join(__dirname, '../assets/park.jpg'), path.join(card, 'sponsor.jpg'));
   const errors = [];
   const app = await electron.launch({ args: [path.join(__dirname, 'smoke-entry.cjs'), '--no-sandbox'], env: { ...process.env, ISASZEG_SMOKE_HOME: root } });
@@ -21,14 +22,15 @@ async function run() {
     await expect(desk.locator('#now-title')).toHaveText('Welcome to Isaszeg Park');
     // Native folder selection is the only stub; all listing / imports use real IPC and files.
     await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, card);
-    const importClip = async (name, kind = 'race') => {
+    const importClip = async (name, kind = 'race', keepOpen = false) => {
       await desk.locator('#import-button').click();
       await desk.locator('#import-kind').selectOption(kind);
       await desk.locator('#choose-folder').click();
       await desk.locator('.file-row').filter({ hasText: name }).locator('input').check();
       await desk.locator('#confirm-import').click();
-      await expect(desk.locator('#import-dialog')).toBeHidden();
       await expect(desk.locator('#import-results')).not.toHaveText('', { timeout: 30000 });
+      if (keepOpen) await expect(desk.locator('#import-dialog')).toBeVisible();
+      else await expect(desk.locator('#import-dialog')).toBeHidden();
     };
     await importClip('camera-001.mp4');
     await expect(desk.locator('#import-results')).toContainText('added to the loop');
@@ -50,9 +52,14 @@ async function run() {
     await expect.poll(() => audience.locator('video').evaluate(video => video.paused)).toBe(true);
     await desk.keyboard.press('4');
     await expect(desk.locator('#rate-badge')).toHaveText('1×');
-    await importClip('renamed-duplicate.mp4');
-    await expect(desk.locator('#import-results')).toContainText('already imported; skipped');
+    await importClip('renamed-duplicate.mp4', 'race', true);
+    await expect(desk.locator('#import-results')).toContainText('already imported as Race 01; skipped');
     await expect(desk.locator('#race-count')).toContainText('2 races');
+    await desk.locator('#import-dialog .close-dialog').last().click();
+    await importClip('empty.mp4', 'race', true);
+    await expect(desk.locator('#import-results')).toContainText('empty or unavailable');
+    await expect(desk.locator('#confirm-import')).toBeDisabled();
+    await desk.locator('#import-dialog .close-dialog').last().click();
     await desk.locator('[data-command="holding"]').click();
     await expect(desk.locator('#playing-mode')).toContainText('HOLDING');
     await desk.locator('[data-command="blackout"]').click();
