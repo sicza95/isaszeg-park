@@ -44,7 +44,7 @@ async function allowedPath(target) {
 }
 function newWindow(options) {
   const window = new BrowserWindow({
-    backgroundColor: '#101614', autoHideMenuBar: true,
+    backgroundColor: '#000000', autoHideMenuBar: true,
     ...options,
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false, autoplayPolicy: 'no-user-gesture-required', spellcheck: false }
   });

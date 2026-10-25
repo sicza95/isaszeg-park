@@ -44,12 +44,7 @@ export function createRegistrationView({api,toast,setState,openImport}) {
   function renderSave() { root.querySelectorAll('[data-reg-save]').forEach(button=>{button.disabled=saving||!dirty||state?.busy;button.innerHTML=`${icon('check')}${saving?'Saving…':'Save meeting'}`;}); }
   function render() {
     if(!state) return;
-    const total = data.races.reduce((n,r)=>n+r.entries.length,0);
     root.innerHTML = `
-      <div class="registration-overview">
-        <div><div class="eyebrow">THE STARTING LINE</div><h2>A good race starts with a good card.</h2><p>Register the races, assign the traps, and keep every dog’s details together.</p></div>
-        <div class="registration-stats"><div><strong>${data.races.length}</strong><span>RACES</span></div><div><strong>${data.dogs.length}</strong><span>DOGS</span></div><div><strong>${total}</strong><span>ENTRIES</span></div></div>
-      </div>
       <div class="reg-source"><span class="reg-source-icon">${icon('download')}</span><div><strong>CGRC European Derby · 4 October 2026</strong><p>14 races · 75 entries · Isaszeg Park · first 3 video references available</p></div><button class="button quiet small" data-reg-action="reference">Open reference meeting ${icon('arrow')}</button></div>
       <div class="reg-toolbar"><div class="reg-tabs" role="tablist" aria-label="Registration view"><button role="tab" aria-selected="${activeTab==='races'}" data-reg-tab="races">Races <span>${data.races.length}</span></button><button role="tab" aria-selected="${activeTab==='dogs'}" data-reg-tab="dogs">Dog registry <span>${data.dogs.length}</span></button></div><div class="reg-toolbar-actions"><span id="registration-status" role="status">${dirty?'Unsaved changes':data.races.length||data.dogs.length?'All changes saved':'Ready for your first entry'}</span>${dirty?'<button class="text-button" data-reg-action="discard">Discard changes</button>':''}<button class="button primary small" data-reg-action="${activeTab==='races'?'new-race':'new-dog'}">${icon('plus')}${activeTab==='races'?'Add race':'Register dog'}</button></div></div>
       ${activeTab==='races'?racePage():dogPage()}

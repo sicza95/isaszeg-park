@@ -85,7 +85,7 @@ async function run() {
     await expect(desk.locator('#creative-grid .creative-card')).toHaveCount(1);
     await expect(desk.locator('#creative-grid [data-enable="redmills"]')).toHaveCount(0);
     await expect(desk.locator('#creative-page .section-toolbar button')).toHaveCount(0);
-    await expect(desk.getByRole('button', { name: 'Add banner', exact: true })).toHaveCount(1);
+    await expect(desk.getByRole('button', { name: 'Import media', exact: true })).toHaveCount(1);
     await desk.locator('#import-button').click();
     await expect(desk.locator('#import-kind')).toHaveValue('banner');
     await expect(desk.locator('#import-kind option[value="ad"]')).toHaveCount(0);
@@ -94,7 +94,7 @@ async function run() {
     await expect(desk.locator('#sponsors-page')).toBeVisible();
     await expect(desk.locator('#creative-page')).toBeHidden();
     await expect(desk.locator('#sponsors-page .section-toolbar button')).toHaveCount(0);
-    await expect(desk.getByRole('button', { name: 'Add sponsor content', exact: true })).toHaveCount(1);
+    await expect(desk.getByRole('button', { name: 'Import media', exact: true })).toHaveCount(1);
     await expect(desk.locator('#sponsor-grid [data-enable="park"]')).toHaveCount(0);
     await expect(desk.locator('#sponsor-grid [data-enable="redmills"]')).not.toBeChecked();
     await desk.locator('#sponsor-grid [data-enable="redmills"]').check();

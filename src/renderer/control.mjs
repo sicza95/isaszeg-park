@@ -21,10 +21,11 @@ function navigate(page) {
   history.replaceState(null, '', `#${page}`);
   document.querySelectorAll('[data-page]').forEach(button => button.classList.toggle('active', button.dataset.page === page));
   for (const name of ['desk', 'registration', 'creative', 'sponsors', 'settings']) $(`#${name}-page`).hidden = name !== page;
-  const labels = { registration: ['Races & dogs', 'Build the race card. Get every dog ready for the start.'], desk: ['Race desk', 'Everything ready for the next replay.'], creative: ['Banners', 'Welcome your audience. Keep the track in the spotlight.'], sponsors: ['Sponsors', 'Give race-day partners their own space.'], settings: ['Settings', 'Set up once. Keep race day simple.'] };
+  const labels = { registration: 'Races & dogs', desk: 'Race desk', creative: 'Banners', sponsors: 'Sponsors', settings: 'Settings' };
   registration.setVisible(page === 'registration');
-  $('#heading').innerHTML = `${labels[page][0]}<span class="accent">.</span>`; $('#page-label').textContent = labels[page][0]; $('#subheading').textContent = labels[page][1];
-  $('#import-button-label').textContent = page === 'sponsors' ? 'Add sponsor content' : page === 'creative' ? 'Add banner' : 'Import media';
+  $('#page-label').textContent = labels[page];
+  document.title = `Isaszeg Replay · ${labels[page]}`;
+  updateCurrentRow(true);
 }
 function playlistRow(item) {
   const race = linkedRace(state.meeting,item), title = e(replayTitle(state.meeting,item));
@@ -46,7 +47,20 @@ function renderPlaylist() {
     : 'Enable sponsor content to include it between races.';
   $('#sponsor-playlist').innerHTML = sponsors.map(playlistRow).join('') || '<div class="queue-empty">No sponsor content yet.<br>Manage sponsors to add images or videos.</div>';
 }
-function updateCurrentRow() { document.querySelectorAll('.queue-item, .creative-card').forEach(row => row.classList.toggle('current', row.dataset.item === playback?.id)); }
+function updateCurrentRow(scroll = false) {
+  document.querySelectorAll('.queue-item, .creative-card').forEach(row => {
+    const current = row.dataset.item === playback?.id;
+    row.classList.toggle('current', current);
+    if (current) row.setAttribute('aria-current', 'true'); else row.removeAttribute('aria-current');
+    if (!scroll || !current || !row.getClientRects().length) return;
+    const list = row.closest('.playlist');
+    if (list) {
+      // Scroll the list only, keeping the preview and toolbar in place.
+      const bounds = list.getBoundingClientRect(), item = row.getBoundingClientRect();
+      if (item.top < bounds.top || item.bottom > bounds.bottom) list.scrollTop += item.top - bounds.top - (list.clientHeight - item.height) / 2;
+    } else row.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+  });
+}
 function renderCreative() {
   for (const [kind, prefix, empty] of [['banner', 'creative', 'No banners.'], ['ad', 'sponsor', 'No sponsor content.']]) {
     const items = state.meeting.items.filter(item => item.kind === kind);
@@ -62,8 +76,9 @@ function renderDisplays() {
   const select = $('#display-select'); const current = Number(select.value);
   select.innerHTML = state.displays.map(display => `<option value="${display.id}">${e(display.label)} · ${display.width}×${display.height}${display.primary ? ' (primary)' : ''}</option>`).join('');
   select.value = String(state.selectedDisplay || (state.displays.some(x => x.id === current) ? current : (state.displays.find(x => !x.primary) || state.displays[0])?.id));
-  $('#display-hint').textContent = !desktop ? 'Move the audience window to your second monitor.' : state.displays.length < 2 ? 'Connect a second monitor in Extend mode. F exits fullscreen.' : `${state.displays.length} monitors connected · Use Extend mode.`;
+  select.title = !desktop ? 'Move the audience window to your second monitor.' : state.displays.length < 2 ? 'Connect a second monitor in Extend mode. F exits fullscreen.' : `${state.displays.length} monitors connected · Use Extend mode.`;
   $('#output-button').innerHTML = `${icon(state.outputVisible ? 'close' : 'external')}${state.outputVisible ? 'Hide display' : 'Open display'}`;
+  $('#output-button').setAttribute('aria-pressed', String(Boolean(state.outputVisible)));
   $('#output-badge').innerHTML = `<span></span>${state.outputVisible ? 'DISPLAY OPEN' : 'PREVIEW ONLY'}`;
   $('#output-badge').classList.toggle('live', state.outputVisible);
 }
@@ -78,9 +93,12 @@ function setState(next) {
   renderPlaylist(); renderCreative(); renderDisplays(); renderDrives();
   player?.setMeeting(state.meeting);
   if (desktop && playback) updatePlayback(playback);
+  updateCurrentRow(true);
 }
 function updatePlayback(value) {
-  if (!state) return; const changed = playback?.id !== value.id; playback = value;
+  if (!state) return;
+  const changed = playback?.id !== value.id || playback?.mode !== value.mode || playback?.phase !== value.phase || (playback?.paused && !value.paused) || (value.position < .5 && playback?.position > 1);
+  playback = value;
   const item = state.meeting.items.find(x => x.id === value.id) || (value.id === 'holding' ? holdingItem(state.meeting) : null);
   if (desktop && item) view.mirror(item, state.meeting, value);
   $('#now-title').textContent = value.title || 'Isaszeg Park';
@@ -95,7 +113,7 @@ function updatePlayback(value) {
   if (document.activeElement !== $('#seek')) $('#seek').value = value.duration ? Math.min(1000, value.position / value.duration * 1000) : 0;
   $('#play-pause').innerHTML = icon(value.paused ? 'play' : 'pause'); $('#play-pause').setAttribute('aria-label', value.paused ? 'Play' : 'Pause');
   document.querySelectorAll('[data-rate]').forEach(button => button.classList.toggle('selected', Number(button.dataset.rate) === value.rate));
-  if (changed) updateCurrentRow();
+  if (changed) updateCurrentRow(true);
   if (value.error && lastError !== value.error) { lastError = value.error; toast(value.error, true); }
   if (!value.error) lastError = null;
 }
@@ -243,8 +261,7 @@ $('#remove-dialog').addEventListener('cancel', event => { if (removing) event.pr
 $('#remove-dialog').addEventListener('close', () => { if (!$('#remove-dialog').open) removingId = null; });
 $('#seek').addEventListener('input', () => safely(() => api.command({ type: 'scrub', fraction: Number($('#seek').value) / 1000 })));
 $('#import-button').addEventListener('click', () => safely(() => openImport(activePage === 'sponsors' ? 'ad' : activePage === 'creative' ? 'banner' : 'race')));
-$('#browse-card').addEventListener('click', () => safely(() => openImport('race', state.drives[0]?.path)));
-for (const id of ['manage-sponsors', 'manage-sponsor-playlist']) $(`#${id}`).addEventListener('click', () => navigate('sponsors'));
+$('#manage-sponsor-playlist').addEventListener('click', () => navigate('sponsors'));
 $('#import-kind').addEventListener('change', () => { $('#race-number-label').hidden = $('#import-kind').value !== 'race'; });
 $('#choose-folder').addEventListener('click', () => safely(async () => { if (!desktop) { await selectDirectly(); return; } const folder = await api.chooseFolder(); if (folder) await browse(folder); }));
 $('#choose-files').addEventListener('click', () => safely(selectDirectly));
