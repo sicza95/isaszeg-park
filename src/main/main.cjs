@@ -139,7 +139,7 @@ async function boot() {
   });
   handle('folder:list', async directory => { const real = await allowedPath(directory); return { directory: real, parent: roots.has(real) ? null : path.dirname(real), entries: await listMediaDirectory(real) }; });
   handle('files:choose', async kind => {
-    const result = await dialog.showOpenDialog(control, { title: kind === 'race' ? 'Choose race recordings' : 'Choose a banner or sponsor creative', properties: ['openFile', 'multiSelections'], filters: [{ name: 'Media', extensions: kind === 'race' ? ['mp4', 'mov', 'm4v', 'webm'] : ['mp4', 'mov', 'm4v', 'webm', 'jpg', 'jpeg', 'png', 'webp'] }] });
+    const result = await dialog.showOpenDialog(control, { title: kind === 'race' ? 'Choose race recordings' : kind === 'ad' ? 'Choose sponsor content' : 'Choose banners and holding slides', properties: ['openFile', 'multiSelections'], filters: [{ name: 'Media', extensions: kind === 'race' ? ['mp4', 'mov', 'm4v', 'webm'] : ['mp4', 'mov', 'm4v', 'webm', 'jpg', 'jpeg', 'png', 'webp'] }] });
     if (result.canceled) return [];
     for (const file of result.filePaths) roots.add(await fs.realpath(path.dirname(file)));
     return result.filePaths;

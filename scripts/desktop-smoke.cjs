@@ -9,6 +9,7 @@ async function run() {
   const fixture = await fs.readFile(path.join(__dirname, '../test/fixtures/sample.mp4'));
   await fs.writeFile(path.join(card, 'camera-001.mp4'), fixture);
   await fs.writeFile(path.join(card, 'camera-002.mp4'), Buffer.concat([fixture, Buffer.from([1])]));
+  await fs.writeFile(path.join(card, 'partner-video.mp4'), Buffer.concat([fixture, Buffer.from([2])]));
   await fs.writeFile(path.join(card, 'renamed-duplicate.mp4'), fixture);
   await fs.writeFile(path.join(card, 'empty.mp4'), '');
   await fs.copyFile(path.join(__dirname, '../assets/park.jpg'), path.join(card, 'sponsor.jpg'));
@@ -20,10 +21,24 @@ async function run() {
     desk.on('console', message => { if (message.type() === 'error') console.error('Renderer:', message.text()); });
     await desk.waitForSelector('.queue-item');
     await expect(desk.locator('#now-title')).toHaveText('Welcome to Isaszeg Park');
+    await expect(desk.locator('#creative-count')).toHaveText('1');
+    await expect(desk.locator('#sponsor-count')).toHaveText('2');
+    await expect(desk.locator('#creative-grid .creative-card')).toHaveCount(1);
+    await expect(desk.locator('#sponsor-grid .creative-card')).toHaveCount(2);
+    await expect(desk.locator('#sponsor-playlist')).toBeVisible();
+    await expect(desk.locator('#sponsor-playlist .queue-item')).toHaveCount(2);
+    await expect(desk.locator('#sponsor-playlist [data-enable="redmills"]')).not.toBeChecked();
+    await expect(desk.locator('#sponsor-playlist [data-item="park"]')).toHaveCount(0);
     // Native folder selection is the only stub; all listing / imports use real IPC and files.
     await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, card);
     const importClip = async (name, kind = 'race', keepOpen = false) => {
+      await desk.locator(`[data-page="${kind === 'ad' ? 'sponsors' : 'desk'}"]`).click();
       await desk.locator('#import-button').click();
+      if (kind === 'ad') {
+        await expect(desk.locator('#import-dialog h2')).toHaveText('Import sponsor content');
+        await expect(desk.locator('#import-kind option')).toHaveCount(1);
+        await expect(desk.locator('#race-number-label')).toBeHidden();
+      } else await expect(desk.locator('#import-kind option[value="ad"]')).toHaveCount(0);
       await desk.locator('#import-kind').selectOption(kind);
       await desk.locator('#choose-folder').click();
       await desk.locator('.file-row').filter({ hasText: name }).locator('input').check();
@@ -67,9 +82,63 @@ async function run() {
     await desk.locator('[data-command="blackout"]').click();
     await expect(audience.locator('.stage-blackout')).toBeHidden();
     await desk.locator('[data-page="creative"]').click();
-    await expect(desk.locator('.creative-card')).toHaveCount(3);
-    await expect(desk.locator('[data-enable="redmills"]').last()).not.toBeChecked();
-    await desk.locator('[data-enable="redmills"]').last().check();
+    await expect(desk.locator('#creative-grid .creative-card')).toHaveCount(1);
+    await expect(desk.locator('#creative-grid [data-enable="redmills"]')).toHaveCount(0);
+    await expect(desk.locator('#creative-page .section-toolbar button')).toHaveCount(0);
+    await expect(desk.getByRole('button', { name: 'Add banner', exact: true })).toHaveCount(1);
+    await desk.locator('#import-button').click();
+    await expect(desk.locator('#import-kind')).toHaveValue('banner');
+    await expect(desk.locator('#import-kind option[value="ad"]')).toHaveCount(0);
+    await desk.locator('#import-dialog .close-dialog').last().click();
+    await desk.locator('[data-page="sponsors"]').click();
+    await expect(desk.locator('#sponsors-page')).toBeVisible();
+    await expect(desk.locator('#creative-page')).toBeHidden();
+    await expect(desk.locator('#sponsors-page .section-toolbar button')).toHaveCount(0);
+    await expect(desk.getByRole('button', { name: 'Add sponsor content', exact: true })).toHaveCount(1);
+    await expect(desk.locator('#sponsor-grid [data-enable="park"]')).toHaveCount(0);
+    await expect(desk.locator('#sponsor-grid [data-enable="redmills"]')).not.toBeChecked();
+    await desk.locator('#sponsor-grid [data-enable="redmills"]').check();
+    await expect(desk.locator('#sponsor-playlist [data-enable="redmills"]')).toBeChecked();
+    await expect(desk.locator('#sponsor-rotation')).toContainText('every 2 races');
+    await desk.locator('#import-button').click();
+    await expect(desk.locator('#import-kind')).toHaveValue('ad');
+    await expect(desk.locator('#import-kind option')).toHaveCount(1);
+    await desk.locator('#import-dialog .close-dialog').last().click();
+    const mainOrder = await desk.locator('#playlist .queue-item').evaluateAll(rows => rows.map(row => row.dataset.item));
+    await expect(desk.locator('#queue-count')).toHaveText('3');
+    await expect(desk.locator('#playlist [data-item="redmills"]')).toHaveCount(0);
+    await desk.locator('#sponsor-grid [data-move="redmills"][data-direction="1"]').click();
+    await expect(desk.locator('#sponsor-grid .creative-card').first()).toHaveAttribute('data-item', 'pedro');
+    await expect(desk.locator('#sponsor-playlist .queue-item').first()).toHaveAttribute('data-item', 'pedro');
+    assert.deepEqual(await desk.locator('#playlist .queue-item').evaluateAll(rows => rows.map(row => row.dataset.item)), mainOrder);
+    await desk.locator('[data-page="desk"]').click();
+    await desk.locator('#sponsor-playlist [data-move="redmills"][data-direction="-1"]').click();
+    await expect(desk.locator('#sponsor-grid .creative-card').first()).toHaveAttribute('data-item', 'redmills');
+    await desk.locator('#sponsor-playlist [data-play="redmills"]').first().click();
+    await expect(desk.locator('#sponsor-playlist [data-item="redmills"]')).toHaveClass(/current/);
+    await expect(desk.locator('#sponsor-grid [data-item="redmills"]')).toHaveClass(/current/);
+    await desk.locator('#sponsor-playlist [data-edit="redmills"]').click();
+    await expect(desk.locator('#edit-race-label')).toBeHidden();
+    const originalSponsorTitle = await desk.locator('#edit-title').inputValue();
+    await desk.locator('#edit-title').fill('Race-day partner');
+    await desk.locator('#edit-form button[type="submit"]').click();
+    await expect(desk.locator('#sponsor-grid [data-item="redmills"] h2')).toHaveText('Race-day partner');
+    await expect(desk.locator('#sponsor-playlist [data-item="redmills"] .queue-title [data-play]')).toHaveText('Race-day partner');
+    await desk.locator('#manage-sponsor-playlist').click();
+    await expect(desk.locator('#sponsors-page')).toBeVisible();
+    await desk.locator('#sponsor-grid [data-edit="redmills"]').click();
+    await desk.locator('#edit-title').fill(originalSponsorTitle);
+    await desk.locator('#edit-form button[type="submit"]').click();
+    await fs.mkdir(path.join(__dirname, '../test-results'), { recursive: true });
+    await desk.screenshot({ path: path.join(__dirname, '../test-results/sponsors.png'), fullPage: true });
+    await desk.locator('[data-page="creative"]').click();
+    await desk.screenshot({ path: path.join(__dirname, '../test-results/banners.png'), fullPage: true });
+    await desk.locator('[data-page="desk"]').click();
+    await desk.locator('#playlist [data-move][data-direction="-1"]').nth(1).click();
+    await expect(desk.locator('#playlist .queue-item').first()).toHaveAttribute('data-item', mainOrder[1]);
+    await desk.locator(`#playlist [data-move="${mainOrder[1]}"][data-direction="1"]`).click();
+    await expect(desk.locator('#playlist .queue-item').first()).toHaveAttribute('data-item', 'park');
+    await desk.locator('[data-command="holding"]').click();
     await desk.locator('[data-page="settings"]').click();
     await desk.locator('#setting-sponsorRail').check();
     await expect(audience.locator('.stage-rail')).toBeVisible();
@@ -104,30 +173,65 @@ async function run() {
     await importClip('sponsor.jpg', 'ad');
     await expect(desk.locator('#import-dialog')).toBeHidden();
     const creative = (await desk.evaluate(() => window.replay.init())).meeting.items.find(item => item.originalName === 'sponsor.jpg');
-    await desk.locator('[data-page="creative"]').click();
-    await desk.locator(`#creative-grid [data-enable="${creative.id}"]`).uncheck();
-    await desk.locator(`#creative-grid [data-remove="${creative.id}"]`).click();
+    await expect(desk.locator(`#playlist [data-item="${creative.id}"]`)).toHaveCount(0);
+    await expect(desk.locator(`#creative-grid [data-item="${creative.id}"]`)).toHaveCount(0);
+    await desk.locator('#sponsor-grid [data-enable="pedro"]').check();
+    await desk.locator(`#sponsor-grid [data-enable="${creative.id}"]`).uncheck();
+    await desk.locator(`#sponsor-grid [data-remove="${creative.id}"]`).click();
     await desk.screenshot({ path: path.join(__dirname, '../test-results/removal-confirmation.png'), fullPage: true });
     await desk.locator('#confirm-remove').click();
-    await expect(desk.locator(`#creative-grid [data-remove="${creative.id}"]`)).toHaveCount(0);
+    await expect(desk.locator(`#sponsor-grid [data-remove="${creative.id}"]`)).toHaveCount(0);
     assert.deepEqual(await fs.readFile(path.join(data.root, data.meeting.date, creative.file)), await fs.readFile(path.join(card, 'sponsor.jpg')));
+    await importClip('partner-video.mp4', 'ad');
+    const partnerVideo = (await desk.evaluate(() => window.replay.init())).meeting.items.find(item => item.originalName === 'partner-video.mp4');
+    await expect(desk.locator(`#sponsor-grid [data-item="${partnerVideo.id}"] video`)).toHaveCount(1);
+    await expect(desk.locator(`#playlist [data-item="${partnerVideo.id}"]`)).toHaveCount(0);
+    await desk.locator(`#sponsor-grid [data-remove="${partnerVideo.id}"]`).click();
+    await desk.locator('#confirm-remove').click();
+    await expect(desk.locator(`#sponsor-grid [data-item="${partnerVideo.id}"]`)).toHaveCount(0);
     await desk.reload();
-    await expect(desk.locator('.queue-item')).toHaveCount(2); // Welcome plus the enabled mock ad.
+    await expect(desk.locator('#sponsors-page')).toBeVisible();
+    await expect(desk.locator('#sponsor-grid .creative-card')).toHaveCount(2);
+    await expect(desk.locator('#playlist .queue-item')).toHaveCount(1); // Videos and banners remain separate from sponsors.
+    await expect(desk.locator('#sponsor-playlist .queue-item')).toHaveCount(2);
     const saved = (await desk.evaluate(() => window.replay.init())).meeting;
     assert.deepEqual(saved.items.map(item => item.id), ['park', 'redmills', 'pedro']);
+    // An old dialog close event can arrive after the next confirmation opens.
+    await desk.evaluate(() => {
+      document.querySelector('#sponsor-grid [data-remove="redmills"]').click();
+      document.querySelector('#remove-dialog .close-dialog').click();
+      document.querySelector('#sponsor-grid [data-remove="pedro"]').click();
+      return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    });
+    await expect(desk.locator('#remove-title')).toHaveText('PEDRO');
+    await desk.locator('#confirm-remove').click();
+    await expect(desk.locator('#sponsor-grid [data-item="pedro"]')).toHaveCount(0);
+    await desk.locator('#sponsor-grid [data-remove="redmills"]').click();
+    await desk.locator('#confirm-remove').click();
+    await expect(desk.locator('#remove-dialog')).not.toBeVisible();
+    await expect(desk.locator('#sponsor-grid')).toContainText('No sponsor content');
+    await expect(desk.locator('#sponsor-playlist')).toContainText('No sponsor content');
+    await expect(desk.locator('#sponsor-queue-count')).toHaveText('0');
+    await expect(desk.locator('#creative-grid .creative-card')).toHaveCount(1);
     await desk.locator('[data-page="creative"]').click();
-    for (const id of ['park', 'redmills', 'pedro']) {
-      await desk.locator(`#creative-grid [data-remove="${id}"]`).click();
-      await desk.locator('#confirm-remove').click();
-      await expect(desk.locator('#remove-dialog')).not.toBeVisible();
-    }
-    await expect(desk.locator('#creative-grid')).toContainText('No banners or ads');
+    await desk.locator('#creative-grid [data-remove="park"]').click();
+    await desk.locator('#confirm-remove').click();
+    await expect(desk.locator('#creative-grid')).toContainText('No banners.');
     await desk.locator('[data-page="desk"]').click();
     await expect(desk.locator('#now-title')).toHaveText('Isaszeg Park');
     await expect(desk.locator('#preview > img')).toBeVisible();
     await expect(audience.locator('img')).toBeVisible();
     assert.deepEqual(errors, []);
     console.log('Desktop smoke passed: real IPC imports, playback controls, removal of videos and images, cancellation, uninterrupted playback, file preservation, persistence and empty-loop fallback.');
+  } catch (error) {
+    const desk = app.windows().find(window => window.url().endsWith('index.html'));
+    if (desk) console.error('Desktop failure state:', await desk.evaluate(() => ({
+      removal: document.querySelector('#remove-dialog').textContent,
+      confirmDisabled: document.querySelector('#confirm-remove').disabled,
+      toast: document.querySelector('#toast').textContent,
+      sponsors: [...document.querySelectorAll('#sponsor-grid [data-item]')].map(card => card.dataset.item)
+    })).catch(() => null));
+    throw error;
   } finally { await app.close(); await fs.rm(root, { recursive: true, force: true }); }
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });
