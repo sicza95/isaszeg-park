@@ -40,11 +40,7 @@ function renderPlaylist() {
   $('#race-count').textContent = races.length ? `${races.length} race${races.length === 1 ? '' : 's'} saved for this meeting` : 'No races imported yet';
   $('#playlist').innerHTML = items.map(playlistRow).join('') + (!races.length ? `<div class="queue-empty">Your race recordings will appear here.<br>Import the first clip to start the loop.</div>` : '');
   const sponsors = state.meeting.items.filter(item => item.kind === 'ad');
-  const interval = Math.max(1, state.meeting.settings.adEvery || 2);
   $('#sponsor-queue-count').textContent = sponsors.length;
-  $('#sponsor-rotation').textContent = sponsors.some(item => item.enabled)
-    ? `Enabled sponsors rotate after every ${interval} race${interval === 1 ? '' : 's'}.`
-    : 'Enable sponsor content to include it between races.';
   $('#sponsor-playlist').innerHTML = sponsors.map(playlistRow).join('') || '<div class="queue-empty">No sponsor content yet.<br>Manage sponsors to add images or videos.</div>';
 }
 function updateCurrentRow(scroll = false) {
@@ -261,6 +257,7 @@ $('#remove-dialog').addEventListener('cancel', event => { if (removing) event.pr
 $('#remove-dialog').addEventListener('close', () => { if (!$('#remove-dialog').open) removingId = null; });
 $('#seek').addEventListener('input', () => safely(() => api.command({ type: 'scrub', fraction: Number($('#seek').value) / 1000 })));
 $('#import-button').addEventListener('click', () => safely(() => openImport(activePage === 'sponsors' ? 'ad' : activePage === 'creative' ? 'banner' : 'race')));
+$('#manage-banner-playlist').addEventListener('click', () => navigate('creative'));
 $('#manage-sponsor-playlist').addEventListener('click', () => navigate('sponsors'));
 $('#import-kind').addEventListener('change', () => { $('#race-number-label').hidden = $('#import-kind').value !== 'race'; });
 $('#choose-folder').addEventListener('click', () => safely(async () => { if (!desktop) { await selectDirectly(); return; } const folder = await api.chooseFolder(); if (folder) await browse(folder); }));
@@ -270,7 +267,7 @@ $('#confirm-import').addEventListener('click', () => safely(importSelected));
 $('#import-dialog').addEventListener('cancel', event => { if (importing) event.preventDefault(); });
 $('#output-button').addEventListener('click', () => safely(async () => { const next = state.outputVisible ? await api.hideOutput() : await api.showOutput(Number($('#display-select').value)); if (next) setState(next); }));
 $('#display-select').addEventListener('change', () => safely(async () => { if (state.outputVisible) { await api.showOutput(Number($('#display-select').value)); } }));
-for (const id of ['reveal-button', 'open-folder']) $(`#${id}`).addEventListener('click', () => safely(() => api.revealFolder()));
+for (const id of ['reveal-button', 'reveal-sponsor-folder', 'open-folder']) $(`#${id}`).addEventListener('click', () => safely(() => api.revealFolder()));
 $('#change-root').addEventListener('click', () => safely(async () => { const next = await api.chooseRoot(); if (next) setState(next); }));
 $('#shortcuts-button').addEventListener('click', () => $('#shortcuts-dialog').showModal());
 $('#edit-form').addEventListener('submit', event => { event.preventDefault(); safely(async () => {

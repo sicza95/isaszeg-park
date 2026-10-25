@@ -1,6 +1,12 @@
 const text = (value, max = 160) => typeof value === 'string' ? value.trim().slice(0, max) : '';
 function validateRegistration(input) {
-  if (!input || !Array.isArray(input.races) || !Array.isArray(input.dogs) || input.races.length > 500 || input.dogs.length > 3000) throw new Error('Invalid registration data.');
+  if (!input || !Array.isArray(input.races) || !Array.isArray(input.dogs) || input.races.length > 500 || input.dogs.length > 20000) throw new Error('Invalid registration data.');
+  const people = (input.people || []).map(person => ({id:text(person.id),name:text(person.name)}));
+  const personIds = new Set();
+  for (const person of people) {
+    if (!person.id || !person.name || personIds.has(person.id)) throw new Error('Each person needs a unique ID and a name.');
+    personIds.add(person.id);
+  }
   const dogIds = new Set(), raceIds = new Set(), numbers = new Set();
   const dogs = input.dogs.map(dog => {
     const id = text(dog.id), name = text(dog.name);
@@ -12,9 +18,13 @@ function validateRegistration(input) {
     if (dog.sex && !['dog','bitch'].includes(dog.sex)) throw new Error('Choose a dog sex.');
     for (const key of ['country','origin']) if (dog[key] && !/^[A-Z]{2}$/.test(dog[key])) throw new Error('Use two-letter uppercase country codes.');
     const result = {id, name, breed:dog.breed};
-    for (const key of ['owner','trainer','country','origin','sire','dam','birth','sex','coat','preference','sourceUrl']) result[key] = text(dog[key]);
+    for (const key of ['owner','trainer','country','origin','sire','dam','birth','sex','coat','preference','sourceUrl','ownerId','trainerId','sireId','damId']) result[key] = text(dog[key]);
     return result;
   });
+  for (const dog of dogs) {
+    for (const key of ['ownerId','trainerId']) if (dog[key] && !personIds.has(dog[key])) throw new Error('Choose a person from the registry.');
+    for (const key of ['sireId','damId']) if (dog[key] && (!dogIds.has(dog[key]) || dog[key] === dog.id)) throw new Error('Choose another dog from the registry as the parent.');
+  }
   const races = input.races.map(race => {
     const number = Number(race.number), id = text(race.id), title = text(race.title);
     if (!id || raceIds.has(id) || !title || !Number.isInteger(number) || number < 1 || number > 9999 || numbers.has(number)) throw new Error('Use a unique race number (1–9999) and a race title.');
@@ -44,6 +54,6 @@ function validateRegistration(input) {
     });
     return {id,number,title,distance,breed:race.breed,type:race.type,grade:text(race.grade,20),sourceUrl:text(race.sourceUrl),videoReference:text(race.videoReference),entries};
   });
-  return {title:text(input.title)||'Race day',track:text(input.track)||'Isaszeg Park',source:text(input.source),races,dogs};
+  return {title:text(input.title)||'Race day',track:text(input.track)||'Isaszeg Park',source:text(input.source),races,dogs,people};
 }
 export { validateRegistration };

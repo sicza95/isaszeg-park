@@ -62,24 +62,92 @@ class MeetingStore {
     return pending;
   }
   folder(date) { return path.join(this.root, validDate(date)); }
+  async registry() {
+    if (!this.registryReady) this.registryReady = (async () => {
+      const { emptyRegistry, mergeRegistry } = await import('../shared/registry.mjs');
+      const file = path.join(this.root, 'registry.json');
+      await fs.mkdir(this.root, {recursive:true});
+      try {
+        const saved = JSON.parse(await fs.readFile(file, 'utf8'));
+        if (saved.version !== 1 || !Array.isArray(saved.dogs) || !Array.isArray(saved.people)) throw new Error('The global registry is invalid. Restore registry.json from a backup.');
+        return mergeRegistry(emptyRegistry(), saved);
+      } catch (error) { if (error.code !== 'ENOENT') throw error; }
+      let registry = emptyRegistry();
+      const folders = (await fs.readdir(this.root, {withFileTypes:true})).filter(entry=>entry.isDirectory() && /^\d{4}-\d{2}-\d{2}$/.test(entry.name)).sort((a,b)=>a.name.localeCompare(b.name));
+      for (const folder of folders) {
+        let meeting;
+        try { meeting = validateMeeting(JSON.parse(await fs.readFile(path.join(this.root,folder.name,'meeting.json'),'utf8')),folder.name); }
+        catch (error) { if (error.code === 'ENOENT') continue; throw error; }
+        if (meeting.registration) registry = mergeRegistry(registry, meeting.registration);
+      }
+      await atomicJSON(file, registry);
+      return registry;
+    })().catch(error=>{this.registryReady=undefined;throw error;});
+    return structuredClone(await this.registryReady);
+  }
+  async writeRegistry(registry) {
+    await atomicJSON(path.join(this.root,'registry.json'),registry);
+    this.registryReady = Promise.resolve(structuredClone(registry));
+    return registry;
+  }
+  async checkRegistryBreeds(registry,skipDate) {
+    const previous = await this.registry();
+    const breeds = new Map(previous.dogs.map(dog=>[dog.id,dog.breed]));
+    if (!registry.dogs.some(dog=>breeds.has(dog.id) && breeds.get(dog.id)!==dog.breed)) return;
+    const {assertRaceBreeds} = await import('../shared/registry.mjs');
+    for (const entry of await fs.readdir(this.root,{withFileTypes:true})) {
+      if (!entry.isDirectory() || !/^\d{4}-\d{2}-\d{2}$/.test(entry.name) || entry.name===skipDate) continue;
+      let meeting;
+      try { meeting=JSON.parse(await fs.readFile(path.join(this.root,entry.name,'meeting.json'),'utf8')); }
+      catch(error) { if(error.code==='ENOENT')continue;throw error; }
+      assertRaceBreeds(registry,meeting.registration);
+    }
+  }
   async load(date) {
     const folder = this.folder(date);
     await fs.mkdir(folder, { recursive: true });
-    try { return validateMeeting(JSON.parse(await fs.readFile(path.join(folder, 'meeting.json'), 'utf8')), date); }
+    let data;
+    try { data = validateMeeting(JSON.parse(await fs.readFile(path.join(folder, 'meeting.json'), 'utf8')), date); }
     catch (error) {
       if (error.code !== 'ENOENT') throw error;
-      const data = defaults(date);
+      data = defaults(date);
       await atomicJSON(path.join(folder, 'meeting.json'), data);
-      return data;
     }
+    const {withRegistry} = await import('../shared/registry.mjs');
+    const registry = await this.registry();
+    if (data.registration || registry.dogs.length || registry.people.length) data.registration = withRegistry(data.registration,registry);
+    return data;
   }
-  async save(data) { validateMeeting(data, data.date); await atomicJSON(path.join(this.folder(data.date), 'meeting.json'), data); return data; }
+  async save(data) {
+    validateMeeting(data, data.date);
+    const saved = structuredClone(data);
+    if (saved.registration) { const {meetingRegistration} = await import('../shared/registry.mjs'); saved.registration = meetingRegistration(saved.registration); }
+    await atomicJSON(path.join(this.folder(data.date), 'meeting.json'), saved);
+    return data;
+  }
   update(date, change) { return this.exclusive(async () => { const data = await this.load(date); change(data); return this.save(data); }); }
   async saveRegistration(date, input) {
     const { validateRegistration } = await import('../shared/registration.mjs');
     const { bindRaceLinks } = await import('../shared/race-links.mjs');
-    const registration = validateRegistration(input);
-    return this.update(date, data => { bindRaceLinks(data); data.registration = registration; bindRaceLinks(data); });
+    const {mergeRegistry,withRegistry} = await import('../shared/registry.mjs');
+    return this.exclusive(async () => {
+      const data = await this.load(date);
+      const registry = mergeRegistry(await this.registry(),input);
+      const registration = validateRegistration(withRegistry(input,registry));
+      await this.checkRegistryBreeds(registry,date);
+      bindRaceLinks(data);
+      await this.writeRegistry(registry);
+      data.registration = registration; bindRaceLinks(data);
+      return this.save(data);
+    });
+  }
+  saveRegistry(input) {
+    return this.exclusive(async () => {
+      const {mergeRegistry} = await import('../shared/registry.mjs');
+      const registry=mergeRegistry(await this.registry(),input);
+      await this.checkRegistryBreeds(registry);
+      return this.writeRegistry(registry);
+    });
   }
   async patchItem(date, id, patch) {
     const { setRaceLink } = await import('../shared/race-links.mjs');

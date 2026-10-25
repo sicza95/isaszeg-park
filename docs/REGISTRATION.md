@@ -1,12 +1,16 @@
 # Race and dog registration
 
-Open **Races & dogs** in the operator sidebar. Add races before importing their recordings, register dogs in the meeting's dog registry, and assign a dog to each occupied trap. **Save meeting** persists the whole race card. **Discard changes** restores the last saved registration. Drafts survive navigation and date changes while the app remains open; save them before closing.
+Open **Races & dogs** in the operator sidebar. Add races before importing their recordings, register dogs in the global dog registry, and assign a dog to each occupied trap. **Save meeting** persists the race card for the selected date. Dogs and people save immediately to the shared registry and are available on every race day. **Discard changes** restores the last saved race card; saved registry changes remain available. Drafts survive navigation and date changes while the app remains open; save them before closing.
 
 **Open reference meeting** opens 4 October 2026 and seeds the scraped data only if that meeting has no saved registration. Existing registration is preserved. The reference contains 14 published races and 75 dogs/entries; the source skips race number 13. It includes non-runners, which are entries but did not race.
 
-Race fields: meeting title, venue, race number/title, grade, distance, track type, breed and up to six trap assignments. Dog fields: name, breed, owner, trainer, standing country, origin, birth month, sex, coat code, sire, dam and I/M/W running preference. Weight, finish/status, split, final split, going, time, estimated time and remarks belong to each race entry. Results are optional. Non-runners, DNF and DQ cannot have finish times. Changing the dog in a trap clears the previous dog's weigh-in and results.
+Race fields: meeting title, venue, race number/title, grade, distance, track type, breed and up to six trap assignments. Dog fields: name, breed, owner, trainer, standing country, origin, birth month, sex, coat code, sire, dam and I/M/W running preference. Weight, finish/status, split, final split, going, time, estimated time and remarks belong to each race entry. Results are optional. Non-runners, DNF and DQ cannot have finish times. Finish/status, final split and time are always visible. Weigh-in and additional results can be expanded. Changing the dog in a trap clears the previous dog's weigh-in and results.
 
-Desktop registration is stored under `registration` in each dated `meeting.json` and uses the existing serialized, atomic storage. It does not add recordings to the replay playlist. Import the matching recording with the race number shown on the card to associate it automatically. Registration and media imports preserve one another. Browser registration is stored in localStorage by meeting date; imported media still lasts only for the tab.
+Dogs and people are stored in `registry.json` at the storage root; race cards are stored under `registration` in each dated `meeting.json`. On first use, existing dogs, owners, trainers and pedigree names from all saved meetings migrate into the shared registry. Original meeting files are preserved until that meeting is edited. Later dog or person edits are reflected on every race day. Back up the entire storage root, including `registry.json`.
+
+Owners and trainers are people with stable IDs; one person can fill both roles. The **Owners & trainers** tab lets you add, search and edit people independently. Owner is optional. Owner, trainer, sire, dam and trap assignment fields filter existing entities as you type. Choose a match or press **Enter** to create the typed name without leaving the form. Sire and dam link to dogs in the registry. Creating a dog from a trap assigns it immediately and opens **Edit dog** for optional details; canceling that dialog keeps the new dog and assignment.
+
+Registration does not add recordings to the replay playlist. Import the matching recording with the race number shown on the card to associate it automatically. Registration and media imports preserve one another. The browser demo also has a shared registry in localStorage, migrating existing date-based records; imported media still lasts only for the tab.
 
 ## Linked replays and audience racecards
 
@@ -32,6 +36,6 @@ National flags are local SVG assets from [lipis/flag-icons](https://github.com/l
 - The first three filenames match the supplied `local-assets` MP4s. Browser preview can play these files directly. Desktop use requires importing them through the normal file chooser; personal video files are not bundled in installers.
 - Only the three named reference videos are served from `local-assets` by the demo server. Other local assets remain unavailable over HTTP.
 
-Run `npm run demo`, open the printed URL, and select **Races & dogs → Open reference meeting**. The app also supports `#registration` to open this view directly.
+Run `npm run test:registration` for the isolated desktop registration smoke test, or `npm run demo`, open the printed URL, and select **Races & dogs → Open reference meeting**. The app also supports `#registration` to open this view directly.
 
 Validation covers reference integrity, race/trap uniqueness, dog references and breeds, result statuses, disk persistence, meeting isolation and registration preservation during media imports. On a Windows sandbox that rejects atomic renames in the system temp directory, set `TEMP` and `TMP` to a writable workspace temporary folder before running the tests.

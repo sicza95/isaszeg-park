@@ -1,5 +1,6 @@
 import { validateRegistration } from '../shared/registration.mjs';
 import { bindRaceLinks, setRaceLink } from '../shared/race-links.mjs';
+import { emptyRegistry, mergeRegistry, withRegistry, meetingRegistration, assertRaceBreeds } from '../shared/registry.mjs';
 const dateNow = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Budapest', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 function fresh(date) {
   return { version: 1, date, title: 'Race day', settings: { bannerSeconds: 12, racecardSeconds: 10, adEvery: 2, sponsorRail: false, muted: true, defaultRate: 1, autoBrowse: true }, items: [
@@ -10,8 +11,28 @@ function fresh(date) {
 }
 export function createDemoAPI() {
   const meetings = new Map(); let date = dateNow(), output = null, transport;
-  const savedRegistration = day => { try { const saved = JSON.parse(localStorage.getItem('isaszeg-registration-' + day) || 'null'); return saved ? validateRegistration(saved) : null; } catch { return null; } };
-  const makeMeeting = day => ({...fresh(day), registration: savedRegistration(day)});
+  let registry = emptyRegistry();
+  const storedRegistry = localStorage.getItem('isaszeg-registry');
+  if (storedRegistry) registry = mergeRegistry(registry,JSON.parse(storedRegistry));
+  else {
+    const keys = Object.keys(localStorage).filter(key=>/^isaszeg-registration-\d{4}-\d{2}-\d{2}$/.test(key)).sort();
+    for (const key of keys) registry = mergeRegistry(registry,JSON.parse(localStorage.getItem(key)));
+    localStorage.setItem('isaszeg-registry',JSON.stringify(registry));
+  }
+  const savedRegistration = day => JSON.parse(localStorage.getItem('isaszeg-registration-' + day) || 'null');
+  const makeMeeting = day => ({...fresh(day), registration: withRegistry(savedRegistration(day),registry)});
+  const checkRegistryBreeds = (next,skipDate) => {
+    const breeds=new Map(registry.dogs.map(dog=>[dog.id,dog.breed]));
+    if(!next.dogs.some(dog=>breeds.has(dog.id) && breeds.get(dog.id)!==dog.breed))return;
+    const dates=new Set([...meetings.keys(),...Object.keys(localStorage).filter(key=>/^isaszeg-registration-\d{4}-\d{2}-\d{2}$/.test(key)).map(key=>key.slice('isaszeg-registration-'.length))]);
+    for(const day of dates)if(day!==skipDate)assertRaceBreeds(next,meetings.get(day)?.registration||savedRegistration(day));
+  };
+  const saveRegistry = (input,skipDate) => {
+    const next = mergeRegistry(registry,input);
+    checkRegistryBreeds(next,skipDate);
+    localStorage.setItem('isaszeg-registry',JSON.stringify(next)); registry=next;
+    for (const meeting of meetings.values()) meeting.registration=withRegistry(meeting.registration,registry);
+  };
   meetings.set(date, makeMeeting(date));
   const events = new EventTarget(); const channel = new BroadcastChannel('isaszeg-replay-demo');
   const files = new Map(); let lastFrame;
@@ -27,7 +48,8 @@ export function createDemoAPI() {
   return {
     init: async () => state(), on: (name, callback) => { const fn = e => callback(e.detail); events.addEventListener(name, fn); return () => events.removeEventListener(name, fn); },
     openMeeting: async next => { if (!/^\d{4}-\d{2}-\d{2}$/.test(next)) throw new Error('Choose a valid date.'); date = next; if (!meetings.has(date)) meetings.set(date, makeMeeting(date)); return refresh(); },
-    saveRegistration: async input => { const data = validateRegistration(input); localStorage.setItem('isaszeg-registration-' + date, JSON.stringify(data)); const meeting = meetings.get(date); bindRaceLinks(meeting); meeting.registration = structuredClone(data); bindRaceLinks(meeting); return refresh(); },
+    saveRegistration: async input => { const next=mergeRegistry(registry,input); const data = validateRegistration(withRegistry(input,next)); checkRegistryBreeds(next,date); localStorage.setItem('isaszeg-registration-' + date, JSON.stringify(meetingRegistration(data))); saveRegistry(next,date); const meeting = meetings.get(date); bindRaceLinks(meeting); meeting.registration = structuredClone(data); bindRaceLinks(meeting); return refresh(); },
+    saveRegistry: async input => { saveRegistry(input); return refresh(); },
     dates: async () => [...meetings.keys()],
     patchItem: async (id, patch) => { const meeting = meetings.get(date), item = meeting.items.find(x => x.id === id); if (!item) throw new Error('This item no longer exists.'); if (Object.hasOwn(patch,'raceId')) setRaceLink(meeting,item,patch.raceId); Object.assign(item, patch); return refresh(); },
     removeItem: async id => {

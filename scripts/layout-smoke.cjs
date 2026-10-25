@@ -27,6 +27,22 @@ async function run() {
     const desk = await app.firstWindow();
     desk.on('pageerror', error => errors.push(error.message));
     await desk.waitForSelector('#playlist .queue-item');
+    await expect(desk.locator('.page-footer, .loop-pill, .playlist-intro')).toHaveCount(0);
+    await expect(desk.locator('.playlist-bottom #manage-sponsor-playlist')).toBeVisible();
+    await expect(desk.locator('.playlist-bottom #reveal-sponsor-folder')).toBeVisible();
+    const listHeights = () => desk.locator('.playlist').evaluateAll(lists=>lists.map(list=>list.clientHeight));
+    const beforeGrowth = await listHeights();
+    await app.evaluate(({BrowserWindow})=>{
+      const control=BrowserWindow.getAllWindows().find(w=>w.webContents.getURL().includes('/index.html'));
+      const [width,height]=control.getSize();control.setSize(width,height+200);
+    });
+    await expect.poll(async()=>{
+      const grown=await listHeights();return grown.every((height,index)=>height>=beforeGrowth[index]+90);
+    }).toBe(true);
+    await app.evaluate(({BrowserWindow})=>{
+      const control=BrowserWindow.getAllWindows().find(w=>w.webContents.getURL().includes('/index.html'));
+      const [width,height]=control.getSize();control.setSize(width,height-200);
+    });
     for (const [page, label] of Object.entries({ desk: 'Race desk', registration: 'Races & dogs', creative: 'Banners', sponsors: 'Sponsors', settings: 'Settings' })) {
       await desk.locator(`[data-page="${page}"]`).click();
       await expect(desk.locator('.topbar h1')).toHaveText(label);
@@ -87,6 +103,10 @@ async function run() {
     await desk.locator('[data-page="registration"]').click();
     await desk.screenshot({ path: path.join(results, 'studio-registration.png'), fullPage: true });
     await desk.locator('[data-page="settings"]').click();
+    const settings = await desk.locator('.settings-card').evaluateAll(cards=>cards.map(card=>({top:card.getBoundingClientRect().top,bottom:card.getBoundingClientRect().bottom,border:getComputedStyle(card).borderWidth,background:getComputedStyle(card).backgroundColor})));
+    assert.ok(settings[1].top>settings[0].bottom,'Settings sections stack vertically');
+    assert.ok(settings.every(card=>card.border==='0px' && card.background==='rgba(0, 0, 0, 0)'),'Settings sections are borderless');
+    assert.ok(await desk.locator('.settings-grid').evaluate(el=>el.getBoundingClientRect().width<=820),'Settings have a maximum width');
     await desk.screenshot({ path: path.join(results, 'studio-settings.png'), fullPage: true });
     for (const width of [1480, 1280, 1040, 800, 620, 375]) {
       await app.evaluate(({ BrowserWindow }, width) => {

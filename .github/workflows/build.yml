@@ -32,6 +32,9 @@ jobs:
       - name: Studio layout and playback following smoke test
         if: runner.os == 'Linux'
         run: xvfb-run -a npm run test:layout
+      - name: Global registry and inline registration smoke test
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npm run test:registration
       - uses: actions/upload-artifact@v4
         if: always() && runner.os == 'Linux'
         with:

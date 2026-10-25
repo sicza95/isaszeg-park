@@ -1,0 +1,91 @@
+const {_electron:electron,expect}=require('playwright/test');
+const fs=require('node:fs/promises');
+const path=require('node:path');
+const assert=require('node:assert/strict');
+
+async function run() {
+  const tempBase=path.resolve(__dirname,'../tmp');await fs.mkdir(tempBase,{recursive:true});
+  const root=await fs.mkdtemp(path.join(tempBase,'registry-smoke-'));
+  const app=await electron.launch({args:[path.join(__dirname,'smoke-entry.cjs'),'--no-sandbox'],env:{...process.env,ISASZEG_SMOKE_HOME:root}});
+  try {
+    const desk=await app.firstWindow(),errors=[];desk.on('pageerror',error=>errors.push(error.message));
+    desk.on('dialog',dialog=>dialog.accept().catch(()=>{}));
+    await desk.waitForSelector('#playlist .queue-item');
+    await desk.locator('[data-page=registration]').click();
+    await desk.locator('[data-reg-tab=dogs]').click();await desk.locator('[data-reg-action=new-dog]').click();
+    await desk.locator('.reg-dog-dialog [name=name]').fill('Fleet Father');
+    await desk.getByRole('button',{name:'Save dog',exact:true}).click();
+    await expect(desk.locator('.reg-dog-dialog')).not.toBeVisible();
+    await expect(desk.locator('.reg-dog-table')).toContainText('Fleet Father');
+    console.log('Registered a dog without an owner.');
+    await desk.locator('[data-reg-tab=races]').click();await desk.locator('[data-reg-action=new-race]').first().click();
+    await desk.locator('[name=title]').fill('Evening final');
+    const trap=desk.getByRole('combobox',{name:'Dog in trap 1',exact:true});
+    await trap.fill('Swift Runner');await trap.press('Enter');
+    await expect(desk.locator('#reg-dog-title')).toHaveText('Edit dog');
+    await expect(desk.locator('.reg-dog-dialog [name=name]')).toHaveValue('Swift Runner');
+    console.log('Created a trap dog and opened its editor.');
+    const owner=desk.getByRole('combobox',{name:'Owner',exact:true}),trainer=desk.getByRole('combobox',{name:'Trainer',exact:true});
+    await owner.fill('Anna Owner');await owner.press('Enter');
+    await expect(desk.locator('.reg-dog-dialog [name=ownerId]')).not.toHaveValue('');
+    console.log('Created the owner inline.');
+    await trainer.fill('Ann');await expect(desk.getByRole('option',{name:'Anna Owner',exact:true})).toBeVisible();
+    await desk.getByRole('option',{name:'Anna Owner',exact:true}).click();
+    const sire=desk.getByRole('combobox',{name:'Sire',exact:true}),dam=desk.getByRole('combobox',{name:'Dam',exact:true});
+    await sire.fill('Fleet');await desk.getByRole('option',{name:'Fleet Father',exact:true}).click();
+    await dam.fill('Swift Mother');await dam.press('Enter');
+    await expect(desk.locator('.reg-dog-dialog [name=damId]')).not.toHaveValue('');
+    console.log('Selected the trainer and sire, created the dam inline.');
+    await desk.getByRole('button',{name:'Save dog',exact:true}).click();
+    await expect(desk.locator('.reg-dog-dialog')).not.toBeVisible();
+    await expect(desk.locator('[name=title]')).toHaveValue('Evening final');
+    for(const field of ['finish','finalSplit','time'])await expect(desk.locator(`[name="${field}-1"]`)).toBeVisible();
+    await desk.locator('[name=finish-1]').selectOption('1');await desk.locator('[name=finalSplit-1]').fill('7.22');await desk.locator('[name=time-1]').fill('16.78');
+    await trap.fill('Swift Run');await desk.getByRole('option',{name:'Swift Runner',exact:true}).click();
+    await expect(desk.locator('[name=time-1]')).toHaveValue('16.78');
+    const day=await desk.locator('#meeting-date').inputValue();
+    await desk.locator('#meeting-date').fill('2026-09-01');await desk.locator('#meeting-date').dispatchEvent('change');
+    await expect(desk.locator('#race-registration-form')).toHaveCount(0);
+    await desk.locator('[data-reg-tab=dogs]').click();await expect(desk.locator('.reg-dog-table')).toContainText('Swift Runner');
+    await desk.locator('#meeting-date').fill(day);await desk.locator('#meeting-date').dispatchEvent('change');await desk.locator('[data-reg-tab=races]').click();
+    await expect(desk.locator('[name=title]')).toHaveValue('Evening final');await expect(desk.locator('[name=time-1]')).toHaveValue('16.78');
+    await desk.locator('[data-reg-save]').click();
+    await expect(desk.locator('#registration-status')).toHaveText('All changes saved');
+    await desk.locator('[data-reg-tab=people]').click();await desk.locator('[data-reg-person]').click();
+    await desk.locator('.reg-person-dialog [name=name]').fill('Anna Updated');await desk.getByRole('button',{name:'Save person',exact:true}).click();
+    await expect(desk.locator('.reg-person-dialog')).not.toBeVisible();
+    let state=await desk.evaluate(()=>window.replay.init());
+    const runner=state.meeting.registration.dogs.find(d=>d.name==='Swift Runner');
+    assert.equal(runner.owner,'Anna Updated');assert.equal(runner.ownerId,runner.trainerId);assert.equal(runner.sire,'Fleet Father');assert.equal(runner.dam,'Swift Mother');
+    assert.equal(state.meeting.registration.people.length,1);
+    await desk.reload();await desk.locator('[data-page=registration]').click();await desk.locator('[data-reg-tab=races]').click();
+    await expect(desk.locator('[name=time-1]')).toHaveValue('16.78');
+    await desk.locator('[name=finish-1]').selectOption('DNF');await expect(desk.locator('[name=time-1]')).toHaveValue('');
+    await desk.locator('[data-reg-save]').click();
+    await expect(desk.locator('#registration-status')).toHaveText('All changes saved');
+    await desk.getByRole('combobox',{name:'Dog in trap 1',exact:true}).fill('Fleet');await desk.getByRole('option',{name:'Fleet Father',exact:true}).click();
+    await expect(desk.locator('[name=finish-1]')).toHaveValue('');await expect(desk.locator('[name=finalSplit-1]')).toHaveValue('');
+    await desk.locator('[data-reg-save]').click();
+    await expect(desk.locator('#registration-status')).toHaveText('All changes saved');
+    await desk.getByRole('combobox',{name:'Dog in trap 1',exact:true}).fill('');
+    await desk.locator('[data-reg-save]').click();
+    await expect(desk.locator('#registration-status')).toHaveText('All changes saved');
+    state=await desk.evaluate(()=>window.replay.init());
+    assert.equal(state.meeting.registration.races[0].entries.length,0);
+    assert.ok(state.meeting.registration.dogs.some(d=>d.name==='Fleet Father'));
+    await fs.mkdir(path.resolve(__dirname,'../test-results'),{recursive:true});
+    await desk.screenshot({path:path.resolve(__dirname,'../test-results/global-registration.png'),fullPage:true});
+    assert.deepEqual(errors,[]);
+    console.log('Registration smoke passed: global dogs and people, optional owner, inline search/create and pedigree links, edit dialog, preserved drafts, visible results, status clearing, rename and restart.');
+  } catch(error) {
+    console.error(error);
+    const desk=app.windows().find(page=>page.url().includes('index.html'));
+    if(desk){await fs.mkdir(path.resolve(__dirname,'../test-results'),{recursive:true});await desk.screenshot({path:path.resolve(__dirname,'../test-results/registration-failure.png'),fullPage:true}).catch(()=>{});}
+    throw error;
+  } finally {
+    await app.close();
+    if(path.dirname(root)!==tempBase)throw new Error('Unexpected smoke-test cleanup path');
+    await fs.rm(root,{recursive:true,force:true});
+  }
+}
+run().catch(error=>{console.error(error);process.exitCode=1;});

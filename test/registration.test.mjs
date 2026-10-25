@@ -26,12 +26,12 @@ test('duplicate races, traps, dogs and invalid results cannot be saved', () => {
 test('races can be registered before recordings and with empty traps',()=>{
   const data=copy();data.races[0].entries=[];assert.equal(validateRegistration(data).races[0].entries.length,0);
 });
-test('registration survives reopening, remains separate by date, and imports do not erase it',async t=>{
+test('race cards remain separate by date while the global registry survives reopening and imports',async t=>{
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'registration-test-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));
   const store=new MeetingStore(root),date='2026-10-04';
   await store.saveRegistration(date,copy());
-  const reopened=await new MeetingStore(root).load(date);assert.equal(reopened.registration.dogs.length,75);
-  const other=await store.load('2026-10-24');assert.equal(other.registration,undefined);
+  const reopened=await new MeetingStore(root).load(date);assert.ok(reopened.registration.dogs.length>=75);
+  const other=await store.load('2026-10-24');assert.deepEqual(other.registration.races,[]);assert.deepEqual(other.registration.dogs,reopened.registration.dogs);
   const clip=path.join(root,'recording.mp4');await fs.writeFile(clip,'test-recording');
   await store.importFiles(date,[clip],'race',1);assert.equal((await store.load(date)).registration.races.length,14);
   const invalid=copy();invalid.races[0].entries[1].trap=1;await assert.rejects(store.saveRegistration(date,invalid));

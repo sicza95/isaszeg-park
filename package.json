@@ -1,7 +1,7 @@
 {
   "name": "greyhound-replay",
   "productName": "Isaszeg Replay",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "An offline race-day replay desk and audience display for Isaszeg Park.",
   "main": "src/main/main.cjs",
   "private": true,
@@ -16,6 +16,7 @@
     "test": "node --test test/*.test.*",
     "test:desktop": "node scripts/desktop-smoke.cjs",
     "test:layout": "node scripts/layout-smoke.cjs",
+    "test:registration": "node scripts/registration-smoke.cjs",
     "test:broadcast": "node scripts/race-broadcast-smoke.cjs",
     "check": "node scripts/check.cjs",
     "pack": "electron-builder --dir",

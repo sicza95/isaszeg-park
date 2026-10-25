@@ -15,7 +15,7 @@ This is the initial implementation. Camera codecs, actual removable-card detecti
 5. Check the proposed race number and click **Import selected**. The app copies and verifies the recording, then appends it to the loop. The current replay continues without restarting. Remove the card only after import completes.
 6. Use **Latest race** to play the newest imported recording immediately. **Hold banner** stays on the welcome slide until you select a clip or press Next. Import the next race whenever it is ready.
 
-Files are stored under `Documents/Isaszeg Replay/YYYY-MM-DD/` by default. Each meeting has a plain `meeting.json` file and its copied media. Race files use readable names such as `race-01-a1b2c3d4.mp4`; the suffix prevents collisions. Originals on the camera card are never renamed or deleted. Change the storage root in Settings to an external disk if needed. Back up the entire root folder regularly.
+Files are stored under `Documents/Isaszeg Replay/YYYY-MM-DD/` by default. Each meeting has a plain `meeting.json` file and its copied media. The storage root also contains `registry.json` with the global dog and people registry. Race files use readable names such as `race-01-a1b2c3d4.mp4`; the suffix prevents collisions. Originals on the camera card are never renamed or deleted. Change the storage root in Settings to an external disk if needed. Back up the entire root folder regularly.
 
 ## Run from source
 
@@ -46,7 +46,7 @@ To package locally, run `npm run dist` on the target OS. Platform-specific comma
 
 ## Races and dogs
 
-Use **Races & dogs** to register race cards and dogs, assign traps, record optional results, and match recordings by race number. **Open reference meeting** loads the scraped CGRC European Derby finals (4 October 2026: 14 races, 75 entries) without replacing existing registration. The first three races identify the supplied local video references. Desktop registration is saved with the meeting; browser registration persists on this device. See [registration workflow and source notes](docs/REGISTRATION.md).
+Use **Races & dogs** to register race cards and dogs, assign traps, record optional results, and match recordings by race number. **Open reference meeting** loads the scraped CGRC European Derby finals (4 October 2026: 14 races, 75 entries) without replacing existing registration. The first three races identify the supplied local video references. Race cards save with the meeting; dogs, owners and trainers share a global registry across all dates. Search or create dogs, people and pedigree links directly in the fields with Enter. Owner is optional. Browser registration persists on this device. See [registration workflow and source notes](docs/REGISTRATION.md).
 
 ## Controls
 

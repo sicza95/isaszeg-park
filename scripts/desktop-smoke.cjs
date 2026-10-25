@@ -99,7 +99,7 @@ async function run() {
     await expect(desk.locator('#sponsor-grid [data-enable="redmills"]')).not.toBeChecked();
     await desk.locator('#sponsor-grid [data-enable="redmills"]').check();
     await expect(desk.locator('#sponsor-playlist [data-enable="redmills"]')).toBeChecked();
-    await expect(desk.locator('#sponsor-rotation')).toContainText('every 2 races');
+    await expect(desk.locator('#sponsor-rotation, .loop-pill, .page-footer')).toHaveCount(0);
     await desk.locator('#import-button').click();
     await expect(desk.locator('#import-kind')).toHaveValue('ad');
     await expect(desk.locator('#import-kind option')).toHaveCount(1);
