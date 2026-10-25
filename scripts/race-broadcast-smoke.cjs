@@ -46,6 +46,21 @@ async function run() {
     await desk.screenshot({path:path.join(__dirname,'../test-results/linked-race-desk.png'),fullPage:true});
     await desk.locator('#play-pause').click();
     await expect.poll(()=>audience.locator('video').evaluate(v=>v.currentTime)).toBeLessThan(reverseStart-.25);
+    // currentTime changes when a seek is requested, even if its picture never
+    // reaches the screen. Check actual compositor frames in a visible window.
+    await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(window=>window.webContents.getURL().endsWith('display.html')).show());
+    await audience.bringToFront();
+    const reverseFrames=await audience.locator('video').evaluate(video=>new Promise((resolve,reject)=>{
+      const frames=[];let callback;
+      const timeout=setTimeout(()=>{video.cancelVideoFrameCallback(callback);reject(new Error('Reverse preview did not present three moving frames'));},2500);
+      const frame=(now,metadata)=>{
+        if(!frames.length||metadata.mediaTime<frames.at(-1).time-.02)frames.push({at:now,time:metadata.mediaTime});
+        if(frames.length===3){clearTimeout(timeout);resolve(frames);}
+        else callback=video.requestVideoFrameCallback(frame);
+      };
+      callback=video.requestVideoFrameCallback(frame);
+    }));
+    assert.ok(reverseFrames[2].time<reverseFrames[0].time-.04,'Decoded frames move backwards');
     await desk.locator('#play-pause').click();
     await audience.keyboard.press('Enter');
     await expect(audience.locator('.racecard-exit')).toHaveCount(1);

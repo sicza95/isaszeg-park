@@ -1,12 +1,14 @@
 import { makePlaylist, nextItem, holdingItem, RATES } from '../shared/playlist.mjs';
 import { linkedRace, replayTitle, racecardSeconds, racecardDuration, reverseRacecardTime, RACECARD_TRANSITION_SECONDS } from '../shared/race-links.mjs';
 import { racePresentation } from './race-presentation.mjs';
+import { ReversePlayback } from './reverse-playback.mjs';
 
 export class StageView {
   constructor(stage) {
     this.stage = stage; this.video = stage.querySelector('video'); this.image = stage.querySelector('img'); this.label = stage.querySelector('.stage-race-label'); this.rail = stage.querySelector('.stage-rail'); this.black = stage.querySelector('.stage-blackout'); this.signature = null;
     this.racePanel = document.createElement('section'); this.racePanel.className = 'race-broadcast'; this.racePanel.hidden = true; this.racePanel.setAttribute('aria-label','Race card and replay details'); stage.append(this.racePanel);
     this.cardFrame = null;
+    this.reverse = new ReversePlayback(this.video);
     this.video.addEventListener('loadedmetadata', () => this.drawRacecard(performance.now()));
   }
   show(item, meeting, status = {}) {
@@ -15,6 +17,7 @@ export class StageView {
     const signature = `${item.id}:${item.url}`;
     const changed = this.signature !== signature;
     if (changed) {
+      this.reverse.reset();
       this.signature = signature;
       this.video.pause(); this.video.removeAttribute('src'); this.video.load();
       this.image.removeAttribute('src');
@@ -63,12 +66,7 @@ export class StageView {
     this.stage.classList.toggle('racecard-exit', elapsed >= racecardSeconds(meeting));
     this.racePanel.querySelector('.racecard-countdown strong').textContent = `${Math.max(0,Math.ceil(racecardSeconds(meeting)-elapsed))} s`;
     this.racePanel.querySelector('.racecard-countdown-label').textContent = progress > 0 ? 'STARTING REPLAY' : 'REPLAY STARTS IN';
-    // Chromium media is decoded in reverse by seeking a paused, muted video.
-    // Keep only one seek in flight so slow camera codecs cannot build a queue.
-    if (Number.isFinite(this.video.duration) && this.video.readyState >= 1 && !this.video.seeking && (!this.lastReverseSeek || now-this.lastReverseSeek >= 1000/30)) {
-      const target = reverseRacecardTime(meeting, elapsed, this.video.duration);
-      if (Math.abs(this.video.currentTime-target) >= .025) { this.video.currentTime = target; this.lastReverseSeek = now; }
-    }
+    if (Number.isFinite(this.video.duration)) this.reverse.seek(reverseRacecardTime(meeting, elapsed, this.video.duration), now);
   }
   animateRacecard(now) {
     this.cardFrame = null;
@@ -79,7 +77,7 @@ export class StageView {
   stopRacecard() {
     this.cardClock = null;
     if (this.cardFrame !== null) cancelAnimationFrame(this.cardFrame);
-    this.cardFrame = null; this.lastReverseSeek = null;
+    this.cardFrame = null; this.reverse.reset();
     this.stage.classList.remove('racecard-exit');
     this.stage.style.removeProperty('--racecard-exit');
   }
@@ -91,7 +89,7 @@ export class StageView {
       if (status.paused || status.phase === 'racecard') this.video.pause(); else this.video.play().catch(() => {});
     }
   }
-  destroy() { this.stopRacecard(); this.video.pause(); }
+  destroy() { this.stopRacecard(); this.reverse.destroy(); this.video.pause(); }
 }
 export class Player {
   constructor(stage, report = () => {}, view = null) {
